@@ -1165,34 +1165,15 @@ class DLPAgent:
     def start(self):
         """Inicia todos los monitores"""
         self.logger.info("=" * 60)
-        self.logger.info("GitHub DLP Agent v2.1 (Ubuntu Compatible) iniciando...")
-        self.logger.info("-" * 60)
+        self.logger.info("DLP Agent v0.8 - Cibershield R.L.")
+        self.logger.info("=" * 60)
 
         # Mostrar información del sistema
         sys_info = SYSTEM_INFO.get_summary()
-        self.logger.info("Sistema detectado:")
-        self.logger.info(f"  OS: {sys_info['distribution']} {sys_info['version']} ({sys_info['codename']})")
-        self.logger.info(f"  Modo: {'Desktop' if sys_info['is_desktop'] else 'Server'}")
-        self.logger.info(f"  Privilegios: {'root' if sys_info['has_root'] else 'usuario'}")
-
-        self.logger.info("-" * 60)
-
-        # Mostrar archivo de configuración usado
-        if _config_file:
-            self.logger.info(f"Config: {_config_file}")
-        else:
-            self.logger.info("Config: Usando valores por defecto (no se encontró config.yaml)")
-
+        self.logger.info(f"Sistema: {sys_info['distribution']} {sys_info['version']}")
         self.logger.info(f"Hostname: {socket.gethostname()}")
-        self.logger.info(f"Usuario: {os.getenv('USER', 'unknown')}")
-        self.logger.info(f"Consola: {self.config['console_host']}:{self.config['console_port']}")
+        self.logger.info(f"Privilegios: {'root' if sys_info['has_root'] else 'usuario'}")
         self.logger.info("-" * 60)
-        self.logger.info("Limites de recursos:")
-        self.logger.info(f"  Max CPU agente: {self.config['max_cpu_percent']}%")
-        self.logger.info(f"  Max RAM agente: {self.config['max_memory_mb']}MB")
-        self.logger.info(f"  Throttle si CPU sistema > {self.config['system_cpu_threshold']}%")
-        self.logger.info(f"  Throttle si RAM sistema > {self.config['system_memory_threshold']}%")
-        self.logger.info("=" * 60)
 
         self.reporter.start()
         self.process_monitor.start()
@@ -1206,57 +1187,18 @@ class DLPAgent:
             if self.kernel_monitor.start():
                 kernel_status = self.kernel_monitor.get_status()
 
-        # Mostrar estado de monitores
-        self.logger.info("Estado de monitores:")
-        self.logger.info("")
-        self.logger.info("  USERSPACE:")
-        self.logger.info("    [OK] ProcessMonitor (comandos git)")
-
+        # Contar monitores activos
+        active_monitors = ["ProcessMonitor", "NetworkMonitor", "MetricsReporter"]
         if INOTIFY_AVAILABLE:
-            self.logger.info("    [OK] FileSystemMonitor (carpetas .git)")
-        else:
-            self.logger.info("    [--] FileSystemMonitor (deshabilitado - inotify no disponible)")
-
-        if sys_info['has_root']:
-            self.logger.info("    [OK] NetworkMonitor (conexiones a GitHub)")
-        else:
-            self.logger.info("    [!!] NetworkMonitor (limitado sin root)")
-
-        self.logger.info("    [OK] MetricsReporter (rendimiento)")
-
-        # Mostrar estado de monitores de kernel
-        self.logger.info("")
-        self.logger.info("  KERNEL:")
+            active_monitors.append("FileSystemMonitor")
         if kernel_status:
-            if kernel_status.get('ebpf_available'):
-                self.logger.info("    [OK] eBPF Monitor (syscalls execve/connect)")
-            else:
-                self.logger.info("    [--] eBPF Monitor (no disponible)")
-
             if kernel_status.get('netlink_available'):
-                self.logger.info("    [OK] Netlink Process Connector (fork/exec/exit)")
-            else:
-                self.logger.info("    [--] Netlink Connector (no disponible)")
+                active_monitors.append("Netlink")
+            if kernel_status.get('ebpf_available'):
+                active_monitors.append("eBPF")
 
-            if kernel_status.get('audit_available'):
-                self.logger.info("    [OK] Audit Subsystem (fallback)")
-            else:
-                self.logger.info("    [--] Audit Subsystem (no disponible)")
-
-            if kernel_status.get('network_available'):
-                self.logger.info("    [OK] Network Kernel Monitor (conexiones)")
-        else:
-            self.logger.info("    [--] Monitoreo de kernel no disponible")
-            if not sys_info['has_root']:
-                self.logger.info("        Ejecutar como root para activar: sudo ./start-agent.sh")
-
-        self.logger.info("")
-
-        # Modo silencioso si no es interactivo
-        if sys.stdout.isatty():
-            self.logger.info("Presiona Ctrl+C para detener")
-        else:
-            self.logger.info("Ejecutando en modo servicio (background)")
+        self.logger.info(f"Monitores activos: {len(active_monitors)}")
+        self.logger.info("Agente iniciado correctamente")
     
     def stop(self):
         """Detiene todos los monitores"""

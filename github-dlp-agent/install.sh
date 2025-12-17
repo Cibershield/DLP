@@ -19,6 +19,7 @@ SCRIPT_DIR="$(cd "$(dirname "${BASH_SOURCE[0]}")" && pwd)"
 VENV_PATH="$SCRIPT_DIR/venv"
 MIN_PYTHON_VERSION="3.8"
 INSTALL_TYPE="user"
+INSTALL_COMPONENT="agent"  # agent, console, or both
 UBUNTU_VERSION=""
 UBUNTU_CODENAME=""
 IS_DESKTOP=false
@@ -44,10 +45,42 @@ log_error() {
 show_banner() {
     echo -e "${CYAN}"
     echo "======================================================================"
-    echo "           GitHub DLP Agent - Instalador Universal"
-    echo "                    Ubuntu Edition v2.0"
+    echo "              DLP Solution - Instalador v0.8"
+    echo "            Desarrollado por Cibershield R.L. 2025"
     echo "======================================================================"
     echo -e "${NC}"
+}
+
+# Seleccionar componente a instalar
+select_component() {
+    echo ""
+    echo -e "${YELLOW}¿Qué componente desea instalar?${NC}"
+    echo ""
+    echo "  1) Agente DLP     - Monitorea equipos de usuarios (instalar en endpoints)"
+    echo "  2) Consola DLP    - Dashboard centralizado (instalar en servidor)"
+    echo "  3) Ambos          - Agente + Consola en el mismo equipo"
+    echo ""
+    read -p "Seleccione [1/2/3]: " choice
+
+    case $choice in
+        1)
+            INSTALL_COMPONENT="agent"
+            log_info "Instalando: Agente DLP"
+            ;;
+        2)
+            INSTALL_COMPONENT="console"
+            log_info "Instalando: Consola DLP"
+            ;;
+        3)
+            INSTALL_COMPONENT="both"
+            log_info "Instalando: Agente + Consola"
+            ;;
+        *)
+            log_error "Opción inválida"
+            exit 1
+            ;;
+    esac
+    echo ""
 }
 
 # Detectar distribución y versión
@@ -404,7 +437,7 @@ create_systemd_services() {
         return
     fi
 
-    log_info "Creando servicios systemd con proteccion..."
+    log_info "Creando servicios systemd..."
 
     # Obtener usuario que ejecutó sudo
     SUDO_USER_NAME="${SUDO_USER:-root}"
@@ -414,12 +447,12 @@ create_systemd_services() {
     chmod 700 /etc/dlp-agent
 
     # =========================================================================
-    # SERVICIO DEL AGENTE (corre como ROOT para monitoreo de kernel)
+    # SERVICIO DEL AGENTE (solo si se instala agente)
     # =========================================================================
-    cat > /etc/systemd/system/dlp-agent.service << EOF
+    if [[ "$INSTALL_COMPONENT" == "agent" || "$INSTALL_COMPONENT" == "both" ]]; then
+        cat > /etc/systemd/system/dlp-agent.service << EOF
 [Unit]
-Description=GitHub DLP Agent - Kernel-Level Monitoring
-Documentation=https://github.com/your-org/dlp-agent
+Description=DLP Agent - Cibershield
 After=network-online.target
 Wants=network-online.target
 
@@ -438,38 +471,10 @@ StandardError=journal
 WantedBy=multi-user.target
 EOF
 
-    # =========================================================================
-    # SERVICIO DE LA CONSOLA
-    # =========================================================================
-    cat > /etc/systemd/system/dlp-console.service << EOF
+        # SERVICIO WATCHDOG (solo para agente)
+        cat > /etc/systemd/system/dlp-watchdog.service << EOF
 [Unit]
-Description=GitHub DLP Console - Web Dashboard
-Documentation=https://github.com/your-org/dlp-agent
-After=network-online.target
-Wants=network-online.target
-
-[Service]
-Type=simple
-User=$SUDO_USER_NAME
-Group=$SUDO_USER_NAME
-WorkingDirectory=$SCRIPT_DIR
-ExecStart=$SCRIPT_DIR/start-console.sh
-Restart=always
-RestartSec=10
-StandardOutput=journal
-StandardError=journal
-
-[Install]
-WantedBy=multi-user.target
-EOF
-
-    # =========================================================================
-    # SERVICIO WATCHDOG (persistencia y auto-recuperacion)
-    # =========================================================================
-    cat > /etc/systemd/system/dlp-watchdog.service << EOF
-[Unit]
-Description=GitHub DLP Agent Watchdog - Persistence Service
-Documentation=https://github.com/your-org/dlp-agent
+Description=DLP Agent Watchdog - Cibershield
 After=network-online.target
 Wants=dlp-agent.service
 
@@ -487,6 +492,36 @@ StandardError=journal
 [Install]
 WantedBy=multi-user.target
 EOF
+        log_success "Servicio dlp-agent.service creado"
+        log_success "Servicio dlp-watchdog.service creado"
+    fi
+
+    # =========================================================================
+    # SERVICIO DE LA CONSOLA (solo si se instala consola)
+    # =========================================================================
+    if [[ "$INSTALL_COMPONENT" == "console" || "$INSTALL_COMPONENT" == "both" ]]; then
+        cat > /etc/systemd/system/dlp-console.service << EOF
+[Unit]
+Description=DLP Console - Cibershield
+After=network-online.target
+Wants=network-online.target
+
+[Service]
+Type=simple
+User=$SUDO_USER_NAME
+Group=$SUDO_USER_NAME
+WorkingDirectory=$SCRIPT_DIR
+ExecStart=$SCRIPT_DIR/start-console.sh
+Restart=always
+RestartSec=10
+StandardOutput=journal
+StandardError=journal
+
+[Install]
+WantedBy=multi-user.target
+EOF
+        log_success "Servicio dlp-console.service creado"
+    fi
 
     # =========================================================================
     # Script de desinstalacion protegido
@@ -686,110 +721,113 @@ show_summary() {
     echo -e "${GREEN}"
     echo "======================================================================"
     echo "              INSTALACION COMPLETADA EXITOSAMENTE"
+    echo "         Desarrollado por Cibershield R.L. 2025 - v0.8"
     echo "======================================================================"
     echo -e "${NC}"
     echo ""
-    echo -e "${CYAN}Sistema detectado:${NC}"
+    echo -e "${CYAN}Sistema:${NC}"
     echo "  Distribucion: $PRETTY_NAME"
-    echo "  Modo: $([ "$IS_DESKTOP" = true ] && echo "Desktop" || echo "Server")"
-    echo "  Python: $PYTHON_VERSION"
-    echo ""
-    echo -e "${CYAN}Archivos instalados:${NC}"
-    echo "  Directorio: $SCRIPT_DIR"
-    echo "  Entorno virtual: $VENV_PATH"
-    echo "  Datos: ~/.dlp-agent/"
+    echo "  Componente instalado: $INSTALL_COMPONENT"
     echo ""
 
-    if [ "$EUID" -eq 0 ]; then
-        echo -e "${CYAN}Capacidades de monitoreo:${NC}"
-        echo "  [+] Monitoreo de procesos (userspace)"
-        echo "  [+] Monitoreo de sistema de archivos (inotify)"
-        echo "  [+] Monitoreo de red (conexiones)"
-        if dpkg -l 2>/dev/null | grep -q python3-bcc; then
-            echo "  [+] Monitoreo de kernel (eBPF/syscalls)"
-        fi
-        if [ -f /proc/net/connector ]; then
-            echo "  [+] Eventos de procesos (Netlink)"
-        fi
-        if command -v auditctl &> /dev/null; then
-            echo "  [+] Auditoria del sistema (auditd)"
-        fi
+    # =========================================================================
+    # RESUMEN PARA AGENTE
+    # =========================================================================
+    if [[ "$INSTALL_COMPONENT" == "agent" || "$INSTALL_COMPONENT" == "both" ]]; then
+        echo -e "${CYAN}=== AGENTE DLP ===${NC}"
         echo ""
+        if [ "$EUID" -eq 0 ]; then
+            echo -e "${CYAN}Capacidades de monitoreo:${NC}"
+            echo "  [+] Monitoreo de procesos (userspace)"
+            echo "  [+] Monitoreo de sistema de archivos (inotify)"
+            echo "  [+] Monitoreo de red (conexiones)"
+            if dpkg -l 2>/dev/null | grep -q python3-bcc; then
+                echo "  [+] Monitoreo de kernel (eBPF/syscalls)"
+            fi
+            if [ -f /proc/net/connector ]; then
+                echo "  [+] Eventos de procesos (Netlink)"
+            fi
+            echo ""
 
-        echo -e "${CYAN}Proteccion:${NC}"
-        if [ -f /etc/dlp-agent/protection.conf ]; then
-            echo "  [+] Clave de administrador: CONFIGURADA"
-            echo "  [+] Watchdog de persistencia: HABILITADO"
-            echo -e "  ${RED}IMPORTANTE: No olvide la clave de administrador${NC}"
+            if [ -f /etc/dlp-agent/protection.conf ]; then
+                echo -e "${CYAN}Proteccion:${NC}"
+                echo "  [+] Clave de administrador: CONFIGURADA"
+                echo -e "  ${RED}IMPORTANTE: No olvide la clave de administrador${NC}"
+                echo ""
+            fi
+
+            echo -e "${YELLOW}Servicios:${NC}"
+            echo "  sudo systemctl enable --now dlp-agent dlp-watchdog"
+            echo "  sudo systemctl status dlp-agent"
+            echo ""
+
+            echo -e "${YELLOW}Logs:${NC}"
+            echo "  journalctl -u dlp-agent -f"
+            echo "  ~/.dlp-agent/events.jsonl"
+            echo ""
+
+            echo -e "${CYAN}======================================================================"
+            echo "              CONFIGURACION DE CONSOLA REMOTA"
+            echo "======================================================================${NC}"
+            echo ""
+            echo "  Editar: $SCRIPT_DIR/config.yaml"
+            echo ""
+            echo "    console:"
+            echo "      host: \"IP_DEL_SERVIDOR_CONSOLA\""
+            echo "      port: 5555"
+            echo ""
+            echo "  Luego: sudo systemctl restart dlp-agent"
+            echo ""
         else
-            echo "  [-] Clave de administrador: NO CONFIGURADA"
-            echo "  [-] El agente puede ser desinstalado sin autorizacion"
+            echo "  Iniciar: cd $SCRIPT_DIR && ./start-agent.sh"
+            echo ""
         fi
-        echo ""
-
-        echo -e "${YELLOW}Servicios systemd:${NC}"
-        echo "  Para habilitar e iniciar:"
-        echo "    sudo systemctl enable --now dlp-agent dlp-console dlp-watchdog"
-        echo ""
-        echo "  Para verificar estado:"
-        echo "    sudo systemctl status dlp-agent"
-        echo "    sudo systemctl status dlp-watchdog"
-        echo ""
-
-        echo -e "${YELLOW}Desinstalacion:${NC}"
-        echo "  Ejecutar: $SCRIPT_DIR/uninstall.sh"
-        echo "  (Requiere clave de administrador si fue configurada)"
-        echo ""
-    else
-        echo -e "${YELLOW}Para iniciar manualmente:${NC}"
-        echo ""
-        echo "  1. Consola (en una terminal):"
-        echo "     cd $SCRIPT_DIR && ./start-console.sh"
-        echo ""
-        echo "  2. Agente (en otra terminal):"
-        echo "     cd $SCRIPT_DIR && ./start-agent.sh"
-        echo ""
     fi
 
-    echo -e "${YELLOW}Dashboard web:${NC}"
-    echo "     http://localhost:8080"
-    echo ""
-    echo -e "${YELLOW}Logs:${NC}"
-    echo "     ~/.dlp-agent/agent.log"
-    echo "     ~/.dlp-agent/events.jsonl"
-    echo "     journalctl -u dlp-agent -f  (si usa systemd)"
-    echo ""
-    echo -e "${CYAN}======================================================================"
-    echo "                   CONFIGURACION IMPORTANTE"
-    echo "======================================================================${NC}"
-    echo ""
-    echo -e "${YELLOW}Si la CONSOLA esta en otro servidor:${NC}"
-    echo "  Editar $SCRIPT_DIR/config.yaml"
-    echo "  Cambiar la seccion 'console':"
-    echo ""
-    echo "    console:"
-    echo "      host: \"IP_DEL_SERVIDOR_CONSOLA\"  # Ej: 192.168.1.100"
-    echo "      port: 5555"
-    echo ""
-    echo "  Luego reiniciar el agente:"
-    echo "    sudo systemctl restart dlp-agent"
-    echo ""
+    # =========================================================================
+    # RESUMEN PARA CONSOLA
+    # =========================================================================
+    if [[ "$INSTALL_COMPONENT" == "console" || "$INSTALL_COMPONENT" == "both" ]]; then
+        echo -e "${CYAN}=== CONSOLA DLP ===${NC}"
+        echo ""
+        echo -e "${YELLOW}Dashboard web:${NC}"
+        echo "  http://$(hostname -I | awk '{print $1}'):8080"
+        echo "  http://localhost:8080"
+        echo ""
+        echo -e "${YELLOW}Puerto TCP para agentes:${NC}"
+        echo "  5555"
+        echo ""
+
+        if [ "$EUID" -eq 0 ]; then
+            echo -e "${YELLOW}Servicio:${NC}"
+            echo "  sudo systemctl enable --now dlp-console"
+            echo "  sudo systemctl status dlp-console"
+            echo ""
+        else
+            echo "  Iniciar: cd $SCRIPT_DIR && ./start-console.sh"
+            echo ""
+        fi
+
+        echo -e "${CYAN}Los agentes deben configurar esta IP en su config.yaml${NC}"
+        echo ""
+    fi
 }
 
 # Main
 main() {
     show_banner
 
+    # Seleccionar qué instalar
+    select_component
+
     # Verificar tipo de instalacion
     if [ "$EUID" -eq 0 ]; then
         INSTALL_TYPE="system"
         log_info "Ejecutando como root - instalacion a nivel de sistema"
-        log_info "Se instalara monitoreo a nivel de kernel (eBPF + Audit)"
-        log_info "Se configurara proteccion con clave de administrador"
     else
         INSTALL_TYPE="user"
         log_info "Ejecutando como usuario - instalacion local"
-        log_warning "Para monitoreo de kernel y proteccion, reinstalar con: sudo ./install.sh"
+        log_warning "Para servicios systemd, ejecutar con: sudo ./install.sh"
     fi
 
     # Ejecutar pasos de instalacion
@@ -797,10 +835,12 @@ main() {
     check_python_version
     check_system_dependencies
 
-    # Instalar dependencias de kernel (solo como root)
-    install_kernel_monitoring_deps
+    # Instalar dependencias de kernel (solo para agente y como root)
+    if [[ "$INSTALL_COMPONENT" == "agent" || "$INSTALL_COMPONENT" == "both" ]]; then
+        install_kernel_monitoring_deps
+        check_inotify_support
+    fi
 
-    check_inotify_support
     create_virtualenv
     install_python_deps
     create_data_directories
@@ -808,11 +848,12 @@ main() {
 
     if [ "$INSTALL_TYPE" = "system" ]; then
         create_systemd_services
-        # Configurar clave de administrador para proteccion
-        configure_admin_key
+        # Configurar clave de administrador (solo para agente)
+        if [[ "$INSTALL_COMPONENT" == "agent" || "$INSTALL_COMPONENT" == "both" ]]; then
+            configure_admin_key
+        fi
     fi
 
-    create_desktop_indicator
     verify_installation
     show_summary
 }
