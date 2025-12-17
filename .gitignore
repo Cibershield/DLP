@@ -1,0 +1,43 @@
+# Python
+__pycache__/
+*.py[cod]
+*$py.class
+*.so
+.Python
+venv/
+ENV/
+env/
+.venv/
+
+# IDE
+.idea/
+.vscode/
+*.swp
+*.swo
+*~
+
+# Logs y datos
+*.log
+*.jsonl
+.dlp-agent/
+
+# Sistema
+.DS_Store
+Thumbs.db
+
+# Configuración sensible
+protection.conf
+*.key
+*.pem
+secrets/
+
+# Entorno virtual
+bin/
+lib/
+include/
+pyvenv.cfg
+
+# Build
+dist/
+build/
+*.egg-info/

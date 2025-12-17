@@ -1,0 +1,33 @@
+# GitHub DLP Agent - Dependencias
+# Instalar con: pip install -r requirements.txt
+
+# Core
+psutil>=5.9.0
+
+# Monitoreo de sistema de archivos (Linux)
+inotify>=0.2.10
+
+# Consola web
+flask>=2.3.0
+flask-cors>=4.0.0
+flask-session>=0.5.0
+
+# Autenticación MS Entra ID (Azure AD)
+msal>=1.24.0
+
+# HTTP requests para GitHub API
+requests>=2.31.0
+
+# ============================================================================
+# MONITOREO A NIVEL DE KERNEL
+# ============================================================================
+
+# Netlink para monitoreo de red y procesos a nivel de kernel
+pyroute2>=0.7.0
+
+# Audit system interface (alternativa a eBPF para auditoría)
+# Nota: python3-bcc debe instalarse via apt para eBPF completo
+# sudo apt install python3-bcc bpfcc-tools linux-headers-$(uname -r)
+
+# Opcional: para exportar a JSON más bonito
+# orjson>=3.9.0

@@ -1,0 +1,139 @@
+# GitHub DLP Agent - Configuración
+# Editar este archivo para personalizar el comportamiento del agente
+
+# =============================================================================
+# PROCESOS PERMITIDOS (IDEs autorizados)
+# =============================================================================
+# Si el comando git se ejecuta desde alguno de estos procesos (o sus hijos),
+# se considera PERMITIDO y solo se registra para auditoría.
+# Agregar el nombre del ejecutable del IDE sin la ruta.
+
+allowed_processes:
+  # Visual Studio Code
+  - code
+  - code-insiders
+  - codium
+  
+  # JetBrains IDEs
+  - idea           # IntelliJ IDEA
+  - idea64         # IntelliJ IDEA 64-bit
+  - pycharm        # PyCharm
+  - pycharm64
+  - webstorm
+  - webstorm64
+  - goland
+  - goland64
+  - rider
+  - rider64
+  - clion
+  - clion64
+  - phpstorm
+  - phpstorm64
+  - rubymine
+  - rubymine64
+  - datagrip
+  - datagrip64
+  
+  # Otros IDEs
+  - android-studio
+  - sublime_text
+  - atom
+  - eclipse
+  - netbeans
+  - vim            # Si quieres permitir vim
+  - nvim           # Neovim
+  - emacs
+  
+  # CI/CD y automatización (descomentar si aplica)
+  # - jenkins
+  # - gitlab-runner
+  # - github-actions-runner
+
+# =============================================================================
+# DOMINIOS A MONITOREAR
+# =============================================================================
+# Dominios relacionados con GitHub que se monitorean
+
+monitored_domains:
+  - github.com
+  - raw.githubusercontent.com
+  - gist.github.com
+  - api.github.com
+  - codeload.github.com
+
+# =============================================================================
+# DIRECTORIOS A MONITOREAR
+# =============================================================================
+# Directorios donde se buscarán nuevas carpetas .git
+
+watch_directories:
+  - "~"              # Home del usuario (se expande automáticamente)
+  - "/tmp"
+  - "/var/tmp"
+  # Agregar más directorios si es necesario:
+  # - "/opt/projects"
+  # - "/srv/repos"
+
+# =============================================================================
+# DIRECTORIOS A EXCLUIR
+# =============================================================================
+# Subdirectorios que se ignoran (dentro de watch_directories)
+
+exclude_directories:
+  - ".cache"
+  - ".local/share/Trash"
+  - "snap"
+  - ".vscode"
+  - ".config/Code"
+  - "node_modules"
+  - ".npm"
+  - ".cargo"
+  - ".rustup"
+  - ".gradle"
+  - ".m2"
+
+# =============================================================================
+# CONEXIÓN A CONSOLA
+# =============================================================================
+
+console:
+  host: "localhost"    # IP o hostname de la consola
+  port: 5555           # Puerto TCP para enviar eventos
+  
+  # Para múltiples agentes reportando a un servidor central:
+  # host: "192.168.1.100"
+  # host: "dlp-console.miempresa.local"
+
+# =============================================================================
+# COMPORTAMIENTO DEL AGENTE
+# =============================================================================
+
+agent:
+  # Intervalo de escaneo de procesos (segundos)
+  scan_interval: 2
+  
+  # Nivel de log: DEBUG, INFO, WARNING, ERROR
+  log_level: "INFO"
+  
+  # Reportar también eventos permitidos (para auditoría completa)
+  report_allowed_events: true
+  
+  # Máximo de caracteres del comando a registrar
+  max_command_length: 500
+
+# =============================================================================
+# ACCIONES (futuras expansiones)
+# =============================================================================
+
+actions:
+  # Solo alertar (no bloquear)
+  mode: "alert"  # opciones: alert, block (block requiere privilegios adicionales)
+  
+  # Enviar notificación al usuario cuando se detecta algo
+  notify_user: false
+  
+  # Webhook para integraciones (Slack, Teams, etc.)
+  webhook_url: ""
+  
+  # Email para alertas críticas
+  alert_email: ""
