@@ -366,11 +366,29 @@ DASHBOARD_HTML = """
             font-size: 0.8rem;
             color: #a29bfe;
         }
+
+        .footer {
+            background: linear-gradient(135deg, #1a1a2e 0%, #16213e 100%);
+            padding: 15px 30px;
+            text-align: center;
+            border-top: 1px solid #333;
+            margin-top: 30px;
+        }
+
+        .footer p {
+            color: #888;
+            font-size: 0.85rem;
+            margin: 0;
+        }
+
+        .footer strong {
+            color: #00d4ff;
+        }
     </style>
 </head>
 <body>
     <div class="header">
-        <h1>GitHub DLP Console v2.0</h1>
+        <h1>DLP Console v0.8</h1>
         <div class="status">
             <span class="status-dot"></span>
             <span>Monitoreando</span>
@@ -449,7 +467,11 @@ DASHBOARD_HTML = """
             Auto-refresh cada 3 segundos | Último update: <span id="last-update">-</span>
         </div>
     </div>
-    
+
+    <footer class="footer">
+        <p>Desarrollado por <strong>Cibershield R.L.</strong> 2025. Todos los derechos reservados. | Versión 0.8</p>
+    </footer>
+
     <script>
         let currentFilter = 'all';
         let allEvents = [];
@@ -728,7 +750,9 @@ def api_stats():
 def main():
     """Punto de entrada principal"""
     print("=" * 60)
-    print("🛡️  GitHub DLP Console")
+    print("🛡️  DLP Console v0.8")
+    print("   Desarrollado por Cibershield R.L. 2025")
+    print("   Todos los derechos reservados.")
     print("=" * 60)
     print(f"📡 TCP Receiver: puerto {CONSOLE_CONFIG['tcp_port']}")
     print(f"🌐 Web Dashboard: http://localhost:{CONSOLE_CONFIG['web_port']}")
