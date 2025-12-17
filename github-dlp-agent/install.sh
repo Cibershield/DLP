@@ -420,9 +420,8 @@ create_systemd_services() {
 [Unit]
 Description=GitHub DLP Agent - Kernel-Level Monitoring
 Documentation=https://github.com/your-org/dlp-agent
-After=network-online.target auditd.service
+After=network-online.target
 Wants=network-online.target
-PartOf=dlp-watchdog.service
 
 [Service]
 Type=simple
@@ -434,21 +433,6 @@ Restart=always
 RestartSec=10
 StandardOutput=journal
 StandardError=journal
-
-# Capacidades de kernel necesarias para monitoreo
-AmbientCapabilities=CAP_NET_ADMIN CAP_SYS_PTRACE CAP_DAC_READ_SEARCH
-CapabilityBoundingSet=CAP_NET_ADMIN CAP_SYS_PTRACE CAP_DAC_READ_SEARCH CAP_AUDIT_CONTROL
-
-# Permitir acceso a kernel tracing
-ReadWritePaths=/sys/kernel/debug /var/run /home/$SUDO_USER_NAME/.dlp-agent /etc/dlp-agent
-ProtectSystem=false
-
-# Recursos
-MemoryMax=200M
-CPUQuota=15%
-
-# Seguridad
-PrivateTmp=true
 
 [Install]
 WantedBy=multi-user.target
@@ -475,12 +459,6 @@ RestartSec=10
 StandardOutput=journal
 StandardError=journal
 
-# Seguridad
-ProtectSystem=strict
-ProtectHome=read-only
-ReadWritePaths=/home/$SUDO_USER_NAME/.dlp-agent
-PrivateTmp=true
-
 [Install]
 WantedBy=multi-user.target
 EOF
@@ -505,16 +483,6 @@ Restart=always
 RestartSec=5
 StandardOutput=journal
 StandardError=journal
-
-# El watchdog no debe poder ser detenido facilmente
-# Solo puede ser detenido con la clave de administrador o via systemctl como root
-KillMode=process
-SendSIGKILL=no
-TimeoutStopSec=10
-
-# Hacer el servicio mas dificil de detener
-# Proteger contra kill -9
-OOMScoreAdjust=-1000
 
 [Install]
 WantedBy=multi-user.target
@@ -790,6 +758,21 @@ show_summary() {
     echo "     ~/.dlp-agent/agent.log"
     echo "     ~/.dlp-agent/events.jsonl"
     echo "     journalctl -u dlp-agent -f  (si usa systemd)"
+    echo ""
+    echo -e "${CYAN}======================================================================"
+    echo "                   CONFIGURACION IMPORTANTE"
+    echo "======================================================================${NC}"
+    echo ""
+    echo -e "${YELLOW}Si la CONSOLA esta en otro servidor:${NC}"
+    echo "  Editar $SCRIPT_DIR/config.yaml"
+    echo "  Cambiar la seccion 'console':"
+    echo ""
+    echo "    console:"
+    echo "      host: \"IP_DEL_SERVIDOR_CONSOLA\"  # Ej: 192.168.1.100"
+    echo "      port: 5555"
+    echo ""
+    echo "  Luego reiniciar el agente:"
+    echo "    sudo systemctl restart dlp-agent"
     echo ""
 }
 
