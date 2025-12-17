@@ -3,6 +3,7 @@
 
 # Core
 psutil>=5.9.0
+PyYAML>=6.0.0
 
 # Monitoreo de sistema de archivos (Linux)
 inotify>=0.2.10

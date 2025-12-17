@@ -26,6 +26,35 @@ from queue import Queue
 from collections import deque
 
 import psutil
+import yaml
+
+# ============================================================================
+# CARGA DE CONFIGURACIÓN DESDE ARCHIVO
+# ============================================================================
+
+def load_config_from_yaml() -> Dict:
+    """Carga configuración desde config.yaml si existe"""
+    config_paths = [
+        Path(__file__).parent.parent / "config.yaml",  # ../config.yaml
+        Path(__file__).parent / "config.yaml",          # ./config.yaml
+        Path("/etc/dlp-agent/config.yaml"),             # Instalación sistema
+        Path.home() / ".dlp-agent" / "config.yaml",     # Config usuario
+    ]
+
+    for config_path in config_paths:
+        if config_path.exists():
+            try:
+                with open(config_path, 'r') as f:
+                    yaml_config = yaml.safe_load(f)
+                    if yaml_config:
+                        return yaml_config, str(config_path)
+            except Exception as e:
+                print(f"[WARN] Error leyendo {config_path}: {e}")
+
+    return None, None
+
+# Cargar configuración YAML
+_yaml_config, _config_file = load_config_from_yaml()
 
 # ============================================================================
 # DETECCIÓN DE SISTEMA OPERATIVO Y COMPATIBILIDAD
@@ -112,49 +141,51 @@ except ImportError as e:
 # ============================================================================
 # CONFIGURACIÓN OPTIMIZADA PARA BAJO CONSUMO DE RECURSOS
 # ============================================================================
+
+# Valores por defecto
+_DEFAULT_ALLOWED_PROCESSES = [
+    "code", "code-insiders", "codium",
+    "idea", "idea64", "pycharm", "pycharm64",
+    "webstorm", "goland", "rider", "clion",
+    "android-studio", "sublime_text", "atom",
+    "eclipse", "netbeans",
+]
+
+# Obtener valores de config.yaml o usar defaults
+def _get_console_config():
+    """Obtiene la configuración de consola desde yaml o defaults"""
+    if _yaml_config and 'console' in _yaml_config:
+        return (
+            _yaml_config['console'].get('host', 'localhost'),
+            _yaml_config['console'].get('port', 5555)
+        )
+    return ('localhost', 5555)
+
+_console_host, _console_port = _get_console_config()
+
 CONFIG = {
     # IDEs y aplicaciones autorizadas (sus procesos padre)
-    "allowed_processes": [
-        "code",           # VS Code
-        "code-insiders",  # VS Code Insiders
-        "codium",         # VSCodium
-        "idea",           # IntelliJ IDEA
-        "idea64",
-        "pycharm",        # PyCharm
-        "pycharm64",
-        "webstorm",       # WebStorm
-        "goland",         # GoLand
-        "rider",          # Rider
-        "clion",          # CLion
-        "android-studio", # Android Studio
-        "sublime_text",   # Sublime Text
-        "atom",           # Atom
-        "eclipse",        # Eclipse
-        "netbeans",       # NetBeans
-    ],
-    
+    "allowed_processes": _yaml_config.get('allowed_processes', _DEFAULT_ALLOWED_PROCESSES) if _yaml_config else _DEFAULT_ALLOWED_PROCESSES,
+
     # Directorios a monitorear para carpetas .git
     "watch_directories": [
         str(Path.home()),
         "/tmp",
         "/var/tmp",
     ],
-    
+
     # Directorios a excluir del monitoreo
-    "exclude_directories": [
-        ".cache",
-        ".local/share/Trash",
-        "snap",
-        ".vscode",
-        ".config/Code",
-        "node_modules",
-        ".npm",
-        ".cargo",
+    "exclude_directories": _yaml_config.get('exclude_directories', [
+        ".cache", ".local/share/Trash", "snap", ".vscode",
+        ".config/Code", "node_modules", ".npm", ".cargo",
+    ]) if _yaml_config else [
+        ".cache", ".local/share/Trash", "snap", ".vscode",
+        ".config/Code", "node_modules", ".npm", ".cargo",
     ],
-    
-    # Servidor de consola
-    "console_host": "localhost",
-    "console_port": 5555,
+
+    # Servidor de consola - DESDE CONFIG.YAML
+    "console_host": _console_host,
+    "console_port": _console_port,
     
     # =========== CONFIGURACIÓN DE RENDIMIENTO ===========
     
@@ -1145,6 +1176,13 @@ class DLPAgent:
         self.logger.info(f"  Privilegios: {'root' if sys_info['has_root'] else 'usuario'}")
 
         self.logger.info("-" * 60)
+
+        # Mostrar archivo de configuración usado
+        if _config_file:
+            self.logger.info(f"Config: {_config_file}")
+        else:
+            self.logger.info("Config: Usando valores por defecto (no se encontró config.yaml)")
+
         self.logger.info(f"Hostname: {socket.gethostname()}")
         self.logger.info(f"Usuario: {os.getenv('USER', 'unknown')}")
         self.logger.info(f"Consola: {self.config['console_host']}:{self.config['console_port']}")
