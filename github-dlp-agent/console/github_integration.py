@@ -200,15 +200,16 @@ class RepositoryTracker:
 
     def track_event(self, event: Dict):
         """Registra un evento de actividad en un repositorio"""
-        repo_name = event.get("repo_name")
-        if not repo_name:
-            return
-
-        # Registrar agente
+        # Siempre registrar el agente, aunque no haya repo_name
         hostname = event.get("hostname")
         source_ip = event.get("source_ip")
         if hostname and source_ip:
             self.register_agent(hostname, source_ip)
+
+        # Solo continuar con tracking de repo si hay repo_name
+        repo_name = event.get("repo_name")
+        if not repo_name:
+            return
 
         # Inicializar repo si no existe
         if repo_name not in self.repositories:

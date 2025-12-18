@@ -1138,10 +1138,17 @@ logger = logging.getLogger("DLPConsole")
 try:
     from github_integration import repo_tracker, github_api
     REPO_TRACKING_ENABLED = True
-except ImportError:
+    logger.info(f"✓ Repository tracking habilitado. Data dir: {repo_tracker.data_dir}")
+except ImportError as e:
     REPO_TRACKING_ENABLED = False
     repo_tracker = None
     github_api = None
+    logger.warning(f"Repository tracking deshabilitado: {e}")
+except Exception as e:
+    REPO_TRACKING_ENABLED = False
+    repo_tracker = None
+    github_api = None
+    logger.error(f"Error cargando github_integration: {e}")
 
 
 def tcp_receiver():
@@ -1267,6 +1274,18 @@ def api_stats():
             "unique_users": list(stats["unique_users"]),
             "unique_hosts": list(stats["unique_hosts"]),
         })
+
+
+@app.route('/api/status')
+def api_status():
+    """API endpoint para estado del sistema"""
+    return jsonify({
+        "repo_tracking_enabled": REPO_TRACKING_ENABLED,
+        "github_api_configured": github_api.is_configured() if github_api else False,
+        "data_dir": str(repo_tracker.data_dir) if repo_tracker else None,
+        "repos_count": len(repo_tracker.repositories) if repo_tracker else 0,
+        "agents_count": len(repo_tracker.known_agents) if repo_tracker else 0,
+    })
 
 
 @app.route('/api/repositories')
