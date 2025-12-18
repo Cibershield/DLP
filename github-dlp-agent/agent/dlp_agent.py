@@ -690,10 +690,22 @@ class ProcessMonitor:
 
                     # Si es clone, extraer nombre del repo de la URL
                     repo_name = repo_info.get('repo_name')
-                    if not repo_name and target_url:
+                    branch = repo_info.get('branch')
+
+                    if target_url:
+                        # Extraer nombre del repo de la URL
                         repo_match = re.search(r'github\.com[:/](.+?)(?:\.git)?$', target_url)
-                        if repo_match:
+                        if repo_match and not repo_name:
                             repo_name = repo_match.group(1)
+
+                        # Extraer rama del comando si está especificada (-b branch)
+                        branch_match = re.search(r'-b\s+(\S+)', cmd_str)
+                        if branch_match:
+                            branch = branch_match.group(1)
+
+                    # Default branch si no se detectó
+                    if not branch and git_operation == 'clone':
+                        branch = 'main'
 
                     event = DLPEvent(
                         timestamp=datetime.now().isoformat(),
@@ -712,7 +724,7 @@ class ProcessMonitor:
                         repo_url=repo_info.get('repo_url') or target_url,
                         repo_path=working_dir,
                         git_operation=git_operation,
-                        branch=repo_info.get('branch')
+                        branch=branch
                     )
 
                     # Log según estado
