@@ -701,6 +701,15 @@ logging.basicConfig(
 )
 logger = logging.getLogger("DLPConsole")
 
+# Importar tracking de repositorios
+try:
+    from github_integration import repo_tracker, github_api
+    REPO_TRACKING_ENABLED = True
+except ImportError:
+    REPO_TRACKING_ENABLED = False
+    repo_tracker = None
+    github_api = None
+
 
 def tcp_receiver():
     """Recibe eventos de los agentes via TCP"""
@@ -742,34 +751,41 @@ def handle_client(client: socket.socket, addr):
 def process_event(event_data: Dict):
     """Procesa un evento recibido"""
     global stats, agent_metrics
-    
+
     event_type = event_data.get("event_type", "unknown")
-    
+
     with events_lock:
         # Manejar métricas de agente por separado
         if event_type == "agent_metrics":
             hostname = event_data.get("hostname", "unknown")
             agent_metrics[hostname] = event_data
             return  # No contar en estadísticas generales
-        
+
         events_store.appendleft(event_data)
-        
+
         stats["total_events"] += 1
         if event_data.get("is_allowed"):
             stats["allowed_events"] += 1
         else:
             stats["blocked_events"] += 1
-        
-        # Contar por tipo
-        if event_type == "git_command":
+
+        # Contar por tipo (incluir nuevos tipos git_*)
+        if event_type.startswith("git_") or event_type == "git_command":
             stats["git_commands"] += 1
         elif event_type == "network_connection":
             stats["network_connections"] += 1
         elif event_type == "new_repo_detected":
             stats["repos_detected"] += 1
-        
+
         stats["unique_users"].add(event_data.get("username", "unknown"))
         stats["unique_hosts"].add(event_data.get("hostname", "unknown"))
+
+    # Tracking de repositorios
+    if REPO_TRACKING_ENABLED and repo_tracker:
+        try:
+            repo_tracker.track_event(event_data)
+        except Exception as e:
+            logger.error(f"Error en repo tracking: {e}")
     
     # Log del evento
     if event_type == "network_connection":
@@ -818,6 +834,80 @@ def api_stats():
             "unique_users": list(stats["unique_users"]),
             "unique_hosts": list(stats["unique_hosts"]),
         })
+
+
+@app.route('/api/repositories')
+def api_repositories():
+    """API endpoint para repositorios rastreados"""
+    if not REPO_TRACKING_ENABLED or not repo_tracker:
+        return jsonify({"error": "Repository tracking not enabled", "repositories": {}})
+
+    repos = repo_tracker.get_all_repositories()
+    # Formatear para el frontend
+    formatted = []
+    for name, data in repos.items():
+        formatted.append({
+            "name": name,
+            "url": data.get("repo_url"),
+            "first_seen": data.get("first_seen"),
+            "total_clones": data.get("total_clones", 0),
+            "total_pushes": data.get("total_pushes", 0),
+            "total_pulls": data.get("total_pulls", 0),
+            "total_commits": data.get("total_commits", 0),
+            "users": list(data.get("users", {}).keys()),
+            "user_count": len(data.get("users", {})),
+            "unauthorized_count": len(data.get("unauthorized_access", [])),
+            "recent_activity": data.get("activity", [])[-10:]
+        })
+    return jsonify({"repositories": formatted})
+
+
+@app.route('/api/repositories/<path:repo_name>')
+def api_repository_detail(repo_name):
+    """API endpoint para detalle de un repositorio"""
+    if not REPO_TRACKING_ENABLED or not repo_tracker:
+        return jsonify({"error": "Repository tracking not enabled"})
+
+    repo = repo_tracker.get_repository_summary(repo_name)
+    if not repo:
+        return jsonify({"error": "Repository not found"}), 404
+
+    return jsonify(repo)
+
+
+@app.route('/api/agents')
+def api_agents():
+    """API endpoint para agentes conocidos"""
+    if not REPO_TRACKING_ENABLED or not repo_tracker:
+        return jsonify({"agents": {}})
+
+    return jsonify({"agents": repo_tracker.get_known_agents()})
+
+
+@app.route('/api/unauthorized')
+def api_unauthorized():
+    """API endpoint para clones no autorizados"""
+    if not REPO_TRACKING_ENABLED or not repo_tracker:
+        return jsonify({"unauthorized": []})
+
+    return jsonify({"unauthorized": repo_tracker.get_unauthorized_clones()})
+
+
+@app.route('/api/github/repo/<owner>/<repo>')
+def api_github_repo(owner, repo):
+    """API endpoint para info de GitHub"""
+    if not REPO_TRACKING_ENABLED or not github_api or not github_api.is_configured():
+        return jsonify({"error": "GitHub API not configured. Set GITHUB_TOKEN environment variable."})
+
+    info = github_api.get_repo_info(owner, repo)
+    collaborators = github_api.get_repo_collaborators(owner, repo)
+    traffic = github_api.get_repo_traffic(owner, repo)
+
+    return jsonify({
+        "info": info,
+        "collaborators": collaborators,
+        "traffic": traffic
+    })
 
 
 def main():

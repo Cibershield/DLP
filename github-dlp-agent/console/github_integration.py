@@ -1,0 +1,303 @@
+#!/usr/bin/env python3
+"""
+GitHub API Integration for DLP Console
+Cibershield R.L. 2025
+
+Permite obtener información de repositorios, permisos y colaboradores.
+"""
+
+import os
+import json
+import requests
+from datetime import datetime
+from typing import Dict, List, Optional
+from pathlib import Path
+
+
+class GitHubIntegration:
+    """Integración con la API de GitHub"""
+
+    def __init__(self, token: Optional[str] = None):
+        """
+        Inicializa la integración con GitHub.
+
+        Args:
+            token: Personal Access Token de GitHub (o se lee de GITHUB_TOKEN env)
+        """
+        self.token = token or os.getenv('GITHUB_TOKEN')
+        self.base_url = "https://api.github.com"
+        self.headers = {
+            "Accept": "application/vnd.github.v3+json",
+            "User-Agent": "DLP-Console-Cibershield"
+        }
+        if self.token:
+            self.headers["Authorization"] = f"token {self.token}"
+
+        # Cache para reducir llamadas a la API
+        self._cache = {}
+        self._cache_ttl = 300  # 5 minutos
+
+    def is_configured(self) -> bool:
+        """Verifica si hay un token configurado"""
+        return bool(self.token)
+
+    def _make_request(self, endpoint: str, method: str = "GET") -> Optional[Dict]:
+        """Realiza una petición a la API de GitHub"""
+        try:
+            url = f"{self.base_url}{endpoint}"
+            response = requests.request(method, url, headers=self.headers, timeout=10)
+
+            if response.status_code == 200:
+                return response.json()
+            elif response.status_code == 404:
+                return None
+            elif response.status_code == 403:
+                # Rate limit o sin permisos
+                return {"error": "Rate limit excedido o sin permisos"}
+            else:
+                return {"error": f"HTTP {response.status_code}"}
+        except Exception as e:
+            return {"error": str(e)}
+
+    def get_repo_info(self, owner: str, repo: str) -> Optional[Dict]:
+        """
+        Obtiene información de un repositorio.
+
+        Returns:
+            Dict con información del repo o None si no existe
+        """
+        cache_key = f"repo:{owner}/{repo}"
+        if cache_key in self._cache:
+            cached = self._cache[cache_key]
+            if (datetime.now() - cached['time']).seconds < self._cache_ttl:
+                return cached['data']
+
+        data = self._make_request(f"/repos/{owner}/{repo}")
+        if data and "error" not in data:
+            self._cache[cache_key] = {'data': data, 'time': datetime.now()}
+        return data
+
+    def get_repo_collaborators(self, owner: str, repo: str) -> List[Dict]:
+        """
+        Obtiene la lista de colaboradores de un repositorio.
+
+        Returns:
+            Lista de colaboradores con sus permisos
+        """
+        data = self._make_request(f"/repos/{owner}/{repo}/collaborators")
+        if isinstance(data, list):
+            collaborators = []
+            for collab in data:
+                collaborators.append({
+                    "username": collab.get("login"),
+                    "avatar": collab.get("avatar_url"),
+                    "permissions": collab.get("permissions", {}),
+                    "role": self._get_role_from_permissions(collab.get("permissions", {}))
+                })
+            return collaborators
+        return []
+
+    def get_repo_permissions(self, owner: str, repo: str, username: str) -> Dict:
+        """
+        Obtiene los permisos de un usuario específico en un repositorio.
+        """
+        data = self._make_request(f"/repos/{owner}/{repo}/collaborators/{username}/permission")
+        if data and "error" not in data:
+            return {
+                "permission": data.get("permission"),
+                "role_name": data.get("role_name"),
+                "user": data.get("user", {}).get("login")
+            }
+        return {"permission": "none", "role_name": "Sin acceso"}
+
+    def _get_role_from_permissions(self, permissions: Dict) -> str:
+        """Determina el rol basado en los permisos"""
+        if permissions.get("admin"):
+            return "Admin"
+        elif permissions.get("maintain"):
+            return "Maintainer"
+        elif permissions.get("push"):
+            return "Write"
+        elif permissions.get("triage"):
+            return "Triage"
+        elif permissions.get("pull"):
+            return "Read"
+        return "None"
+
+    def get_repo_traffic(self, owner: str, repo: str) -> Dict:
+        """
+        Obtiene estadísticas de tráfico del repositorio.
+        Requiere permisos de push en el repo.
+        """
+        clones = self._make_request(f"/repos/{owner}/{repo}/traffic/clones")
+        views = self._make_request(f"/repos/{owner}/{repo}/traffic/views")
+
+        return {
+            "clones": clones if clones and "error" not in clones else {"count": 0, "uniques": 0},
+            "views": views if views and "error" not in views else {"count": 0, "uniques": 0}
+        }
+
+
+class RepositoryTracker:
+    """Rastrea actividad de repositorios desde los eventos DLP"""
+
+    def __init__(self, data_dir: str = None):
+        self.data_dir = Path(data_dir or "/app/data")
+        self.data_dir.mkdir(parents=True, exist_ok=True)
+        self.repos_file = self.data_dir / "repositories.json"
+        self.agents_file = self.data_dir / "known_agents.json"
+
+        self.repositories = self._load_json(self.repos_file, {})
+        self.known_agents = self._load_json(self.agents_file, {})
+
+    def _load_json(self, path: Path, default: Dict) -> Dict:
+        """Carga un archivo JSON o retorna el default"""
+        try:
+            if path.exists():
+                return json.loads(path.read_text())
+        except:
+            pass
+        return default
+
+    def _save_json(self, path: Path, data: Dict):
+        """Guarda datos en archivo JSON"""
+        try:
+            path.write_text(json.dumps(data, indent=2, default=str))
+        except Exception as e:
+            print(f"Error guardando {path}: {e}")
+
+    def register_agent(self, hostname: str, ip: str):
+        """Registra un agente conocido"""
+        key = f"{hostname}_{ip}"
+        if key not in self.known_agents:
+            self.known_agents[key] = {
+                "hostname": hostname,
+                "ip": ip,
+                "first_seen": datetime.now().isoformat(),
+                "last_seen": datetime.now().isoformat()
+            }
+        else:
+            self.known_agents[key]["last_seen"] = datetime.now().isoformat()
+
+        self._save_json(self.agents_file, self.known_agents)
+
+    def is_known_agent(self, hostname: str = None, ip: str = None) -> bool:
+        """Verifica si un agente es conocido"""
+        if hostname and ip:
+            return f"{hostname}_{ip}" in self.known_agents
+        if ip:
+            return any(a.get("ip") == ip for a in self.known_agents.values())
+        if hostname:
+            return any(a.get("hostname") == hostname for a in self.known_agents.values())
+        return False
+
+    def track_event(self, event: Dict):
+        """Registra un evento de actividad en un repositorio"""
+        repo_name = event.get("repo_name")
+        if not repo_name:
+            return
+
+        # Registrar agente
+        hostname = event.get("hostname")
+        source_ip = event.get("source_ip")
+        if hostname and source_ip:
+            self.register_agent(hostname, source_ip)
+
+        # Inicializar repo si no existe
+        if repo_name not in self.repositories:
+            self.repositories[repo_name] = {
+                "repo_name": repo_name,
+                "repo_url": event.get("repo_url"),
+                "first_seen": datetime.now().isoformat(),
+                "total_clones": 0,
+                "total_pushes": 0,
+                "total_pulls": 0,
+                "total_commits": 0,
+                "clone_events": [],
+                "activity": [],
+                "users": {},
+                "unauthorized_access": []
+            }
+
+        repo = self.repositories[repo_name]
+        operation = event.get("git_operation") or event.get("event_type", "").replace("git_", "")
+
+        # Contadores
+        if operation == "clone" or event.get("event_type") == "new_repo_detected":
+            repo["total_clones"] += 1
+        elif operation == "push":
+            repo["total_pushes"] += 1
+        elif operation == "pull":
+            repo["total_pulls"] += 1
+        elif operation == "commit":
+            repo["total_commits"] += 1
+
+        # Registrar usuario
+        username = event.get("username", "unknown")
+        if username not in repo["users"]:
+            repo["users"][username] = {
+                "first_seen": datetime.now().isoformat(),
+                "operations": 0
+            }
+        repo["users"][username]["operations"] += 1
+        repo["users"][username]["last_seen"] = datetime.now().isoformat()
+
+        # Registrar actividad
+        activity_entry = {
+            "timestamp": event.get("timestamp"),
+            "operation": operation,
+            "username": username,
+            "hostname": hostname,
+            "source_ip": source_ip,
+            "branch": event.get("branch"),
+            "is_from_agent": self.is_known_agent(hostname, source_ip)
+        }
+        repo["activity"].append(activity_entry)
+
+        # Mantener solo últimas 100 actividades
+        if len(repo["activity"]) > 100:
+            repo["activity"] = repo["activity"][-100:]
+
+        # Registrar clones específicamente
+        if operation == "clone" or event.get("event_type") == "new_repo_detected":
+            clone_entry = {
+                "timestamp": event.get("timestamp"),
+                "username": username,
+                "hostname": hostname,
+                "source_ip": source_ip,
+                "repo_path": event.get("repo_path"),
+                "is_from_agent": self.is_known_agent(hostname, source_ip)
+            }
+            repo["clone_events"].append(clone_entry)
+
+            # Detectar acceso sin agente
+            if not clone_entry["is_from_agent"]:
+                repo["unauthorized_access"].append(clone_entry)
+
+        self._save_json(self.repos_file, self.repositories)
+
+    def get_repository_summary(self, repo_name: str) -> Optional[Dict]:
+        """Obtiene resumen de un repositorio"""
+        return self.repositories.get(repo_name)
+
+    def get_all_repositories(self) -> Dict:
+        """Obtiene todos los repositorios rastreados"""
+        return self.repositories
+
+    def get_known_agents(self) -> Dict:
+        """Obtiene lista de agentes conocidos"""
+        return self.known_agents
+
+    def get_unauthorized_clones(self) -> List[Dict]:
+        """Obtiene lista de clones desde equipos sin agente"""
+        unauthorized = []
+        for repo_name, repo in self.repositories.items():
+            for clone in repo.get("unauthorized_access", []):
+                clone["repo_name"] = repo_name
+                unauthorized.append(clone)
+        return sorted(unauthorized, key=lambda x: x.get("timestamp", ""), reverse=True)
+
+
+# Instancia global
+github_api = GitHubIntegration()
+repo_tracker = RepositoryTracker()
