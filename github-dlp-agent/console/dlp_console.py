@@ -367,6 +367,41 @@ DASHBOARD_HTML = """
             color: #a29bfe;
         }
 
+        .repo-link {
+            color: #00d4ff;
+            text-decoration: none;
+            font-weight: 500;
+        }
+
+        .repo-link:hover {
+            text-decoration: underline;
+        }
+
+        .repo-cell {
+            max-width: 200px;
+            overflow: hidden;
+            text-overflow: ellipsis;
+            white-space: nowrap;
+        }
+
+        .path-cell {
+            font-family: 'Fira Code', monospace;
+            font-size: 0.75rem;
+            color: #888;
+            max-width: 150px;
+            overflow: hidden;
+            text-overflow: ellipsis;
+            white-space: nowrap;
+        }
+
+        .op-badge {
+            display: inline-block;
+            padding: 2px 6px;
+            border-radius: 4px;
+            font-size: 0.8rem;
+            background: rgba(0, 212, 255, 0.1);
+        }
+
         .footer {
             background: linear-gradient(135deg, #1a1a2e 0%, #16213e 100%);
             padding: 15px 30px;
@@ -448,12 +483,12 @@ DASHBOARD_HTML = """
                 <tr>
                     <th>Hora</th>
                     <th>Estado</th>
-                    <th>Tipo</th>
+                    <th>Operación</th>
+                    <th>Repositorio</th>
                     <th>Usuario</th>
-                    <th>Host</th>
-                    <th>IP Origen</th>
-                    <th>Proceso</th>
-                    <th>Comando</th>
+                    <th>Host / IP</th>
+                    <th>Rama</th>
+                    <th>Ruta Local</th>
                 </tr>
             </thead>
             <tbody id="events-body">
@@ -464,7 +499,7 @@ DASHBOARD_HTML = """
         </table>
         
         <div class="refresh-info">
-            Auto-refresh cada 1 segundo | Último update: <span id="last-update">-</span>
+            Último update: <span id="last-update">-</span>
         </div>
     </div>
 
@@ -518,7 +553,39 @@ DASHBOARD_HTML = """
             }
             return '-';
         }
-        
+
+        function getOperationBadge(event) {
+            const opIcons = {
+                'git_clone': '📥 Clone',
+                'git_push': '📤 Push',
+                'git_pull': '📩 Pull',
+                'git_commit': '💾 Commit',
+                'git_fetch': '🔄 Fetch',
+                'new_repo_detected': '📂 Nuevo Repo',
+                'network_connection': '🌐 Red',
+                'git_command': '📦 Git'
+            };
+            return opIcons[event.event_type] || event.git_operation || event.event_type;
+        }
+
+        function getRepoDisplay(event) {
+            if (event.repo_name) {
+                const url = event.repo_url || `https://github.com/${event.repo_name}`;
+                return `<a href="${url}" target="_blank" class="repo-link">${event.repo_name}</a>`;
+            }
+            if (event.target_url) {
+                const parts = event.target_url.replace('https://github.com/', '').split('/');
+                return `<a href="${event.target_url}" target="_blank" class="repo-link">${parts.slice(0,2).join('/')}</a>`;
+            }
+            return '-';
+        }
+
+        function truncatePath(path) {
+            if (!path) return '-';
+            if (path.length <= 25) return path;
+            return '...' + path.slice(-22);
+        }
+
         function renderEvents() {
             const tbody = document.getElementById('events-body');
             
@@ -552,12 +619,12 @@ DASHBOARD_HTML = """
                 <tr>
                     <td class="time-cell">${formatTime(event.timestamp)}</td>
                     <td>${getEventBadge(event)}</td>
-                    <td>${event.event_type}</td>
+                    <td>${getOperationBadge(event)}</td>
+                    <td class="repo-cell">${getRepoDisplay(event)}</td>
                     <td>${event.username || 'unknown'}</td>
-                    <td>${event.hostname}</td>
-                    <td class="ip-cell">${event.source_ip || '-'}</td>
-                    <td>${event.process_name || '-'}</td>
-                    <td>${getCommandDisplay(event)}</td>
+                    <td class="ip-cell">${event.hostname}<br/><small>${event.source_ip || ''}</small></td>
+                    <td>${event.branch || '-'}</td>
+                    <td class="path-cell" title="${event.repo_path || event.working_directory || ''}">${truncatePath(event.repo_path || event.working_directory)}</td>
                 </tr>
             `).join('');
         }

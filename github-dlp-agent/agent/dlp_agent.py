@@ -243,7 +243,7 @@ LOCAL_IP = get_local_ip()
 class DLPEvent:
     """Representa un evento de seguridad detectado"""
     timestamp: str
-    event_type: str  # "git_command", "network_connection", "new_repo_detected", "agent_metrics"
+    event_type: str  # "git_clone", "git_push", "git_pull", "git_commit", "new_repo_detected", etc.
     username: str
     hostname: str
     process_name: str
@@ -255,6 +255,12 @@ class DLPEvent:
     reason: str = ""
     # IP del equipo que genera el evento
     source_ip: Optional[str] = None
+    # Información del repositorio
+    repo_name: Optional[str] = None        # Nombre del repositorio (ej: "octocat/Hello-World")
+    repo_url: Optional[str] = None         # URL completa del repositorio
+    repo_path: Optional[str] = None        # Ruta local donde está el repo
+    git_operation: Optional[str] = None    # clone, push, pull, commit, fetch, etc.
+    branch: Optional[str] = None           # Rama actual
     # Campos adicionales para eventos de red
     remote_ip: Optional[str] = None
     remote_port: Optional[int] = None
@@ -665,42 +671,60 @@ class ProcessMonitor:
                     continue
                 
                 cmd_str = ' '.join(cmdline)
-                
+
                 # Verificar si es un comando de git relacionado con GitHub
-                if self._is_github_git_command(cmd_str, name):
+                is_git_cmd, git_operation = self._is_github_git_command(cmd_str, name)
+                if is_git_cmd:
                     self.seen_pids.add(pid)
-                    
+
                     # Verificar proceso padre (con cache)
                     ppid = pinfo.get('ppid')
                     parent_name, is_allowed = self._get_parent_info_cached(ppid)
-                    
+
                     # Extraer URL si está presente
                     target_url = self._extract_github_url(cmd_str)
-                    
+
+                    # Obtener información del repositorio
+                    working_dir = pinfo.get('cwd', 'unknown') or 'unknown'
+                    repo_info = self._get_repo_info_from_path(working_dir)
+
+                    # Si es clone, extraer nombre del repo de la URL
+                    repo_name = repo_info.get('repo_name')
+                    if not repo_name and target_url:
+                        repo_match = re.search(r'github\.com[:/](.+?)(?:\.git)?$', target_url)
+                        if repo_match:
+                            repo_name = repo_match.group(1)
+
                     event = DLPEvent(
                         timestamp=datetime.now().isoformat(),
-                        event_type="git_command",
+                        event_type=f"git_{git_operation}" if git_operation else "git_command",
                         username=pinfo.get('username') or os.getenv('USER', 'unknown'),
                         hostname=self.hostname,
                         process_name=name,
                         command_line=cmd_str[:500],  # Limitar longitud
                         parent_process=parent_name,
-                        working_directory=pinfo.get('cwd', 'unknown') or 'unknown',
+                        working_directory=working_dir,
                         target_url=target_url,
                         is_allowed=is_allowed,
                         reason="IDE autorizado" if is_allowed else "Ejecutado fuera de IDE autorizado",
-                        source_ip=LOCAL_IP
+                        source_ip=LOCAL_IP,
+                        repo_name=repo_name,
+                        repo_url=repo_info.get('repo_url') or target_url,
+                        repo_path=working_dir,
+                        git_operation=git_operation,
+                        branch=repo_info.get('branch')
                     )
-                    
+
                     # Log según estado
+                    op_emoji = {'clone': '📥', 'push': '📤', 'pull': '📩', 'commit': '💾', 'fetch': '🔄'}.get(git_operation, '📦')
                     if not is_allowed:
                         self.logger.warning(
-                            f"🚨 ALERTA: {event.username} ejecutó '{cmd_str[:50]}...' "
-                            f"desde {parent_name}"
+                            f"🚨 ALERTA: {event.username} ejecutó '{git_operation}' "
+                            f"en {repo_name or 'repo desconocido'} desde {parent_name}"
                         )
                     else:
                         self.logger.info(
-                            f"✓ Permitido: {event.username} ejecutó git desde {parent_name}"
+                            f"{op_emoji} {event.username} ejecutó '{git_operation}' desde {parent_name}"
                         )
                     
                     self.reporter.report(event)
@@ -726,29 +750,85 @@ class ProcessMonitor:
         self._parent_cache[ppid] = (parent_name, is_allowed)
         return (parent_name, is_allowed)
     
-    def _is_github_git_command(self, cmd: str, name: str) -> bool:
-        """Verifica si es un comando git relacionado con GitHub"""
+    def _is_github_git_command(self, cmd: str, name: str) -> Tuple[bool, Optional[str]]:
+        """
+        Verifica si es un comando git relacionado con GitHub
+        Retorna: (es_comando_git, tipo_operacion)
+        """
         cmd_lower = cmd.lower()
-        
-        # Comandos git clone/pull/fetch
+
+        # Comandos git
         if name == 'git':
-            if any(x in cmd_lower for x in ['clone', 'pull', 'fetch']):
-                # Verificar si involucra GitHub o es clone genérico
-                if 'github.com' in cmd_lower or 'clone' in cmd_lower:
-                    return True
-        
+            # Operaciones que nos interesan
+            git_operations = {
+                'clone': 'clone',
+                'push': 'push',
+                'pull': 'pull',
+                'fetch': 'fetch',
+                'commit': 'commit',
+            }
+
+            for op_key, op_name in git_operations.items():
+                if op_key in cmd_lower:
+                    # Para clone, siempre detectar
+                    if op_name == 'clone':
+                        return True, op_name
+                    # Para push/pull/fetch/commit, detectar todos
+                    if op_name in ('push', 'pull', 'fetch', 'commit'):
+                        return True, op_name
+
         # GitHub CLI
         elif name == 'gh':
-            if any(x in cmd_lower for x in ['clone', 'fork', 'repo']):
-                return True
-        
+            if 'clone' in cmd_lower:
+                return True, 'clone'
+            elif 'pr create' in cmd_lower or 'pr merge' in cmd_lower:
+                return True, 'pull_request'
+            elif any(x in cmd_lower for x in ['fork', 'repo create']):
+                return True, 'repo_operation'
+
         # Descargas directas
         elif name in ('curl', 'wget'):
             if 'github.com' in cmd_lower:
                 if any(x in cmd_lower for x in ['archive', '.zip', '.tar', 'raw.']):
-                    return True
-        
-        return False
+                    return True, 'download'
+
+        return False, None
+
+    def _get_repo_info_from_path(self, path: str) -> Dict[str, Optional[str]]:
+        """Extrae información del repositorio desde una ruta"""
+        result = {'repo_url': None, 'repo_name': None, 'branch': None}
+
+        try:
+            git_dir = Path(path)
+            # Buscar .git en la ruta o sus padres
+            for parent in [git_dir] + list(git_dir.parents):
+                git_path = parent / '.git'
+                if git_path.exists():
+                    # Leer URL del remote
+                    config_path = git_path / 'config' if git_path.is_dir() else None
+                    if config_path and config_path.exists():
+                        config_content = config_path.read_text()
+                        # Buscar URL del remote origin
+                        url_match = re.search(r'url\s*=\s*(.+)', config_content)
+                        if url_match:
+                            result['repo_url'] = url_match.group(1).strip()
+                            # Extraer nombre del repo
+                            repo_match = re.search(r'github\.com[:/](.+?)(?:\.git)?$', result['repo_url'])
+                            if repo_match:
+                                result['repo_name'] = repo_match.group(1)
+
+                    # Leer rama actual
+                    head_path = git_path / 'HEAD' if git_path.is_dir() else None
+                    if head_path and head_path.exists():
+                        head_content = head_path.read_text().strip()
+                        if head_content.startswith('ref: refs/heads/'):
+                            result['branch'] = head_content.replace('ref: refs/heads/', '')
+
+                    break
+        except Exception:
+            pass
+
+        return result
     
     def _get_parent_process_name(self, ppid: Optional[int]) -> str:
         """Obtiene el nombre del proceso padre"""
@@ -867,7 +947,10 @@ class FileSystemMonitor:
                     
                     # Determinar quién lo creó
                     username = self._get_directory_owner(full_path)
-                    
+
+                    # Obtener información del repositorio
+                    repo_info = self._get_repo_info(path)
+
                     event = DLPEvent(
                         timestamp=datetime.now().isoformat(),
                         event_type="new_repo_detected",
@@ -877,10 +960,15 @@ class FileSystemMonitor:
                         command_line="",
                         parent_process="",
                         working_directory=path,
-                        target_url=None,
+                        target_url=repo_info.get('repo_url'),
                         is_allowed=False,
                         reason=f"Nueva carpeta .git creada en {path}",
-                        source_ip=LOCAL_IP
+                        source_ip=LOCAL_IP,
+                        repo_name=repo_info.get('repo_name'),
+                        repo_url=repo_info.get('repo_url'),
+                        repo_path=path,
+                        git_operation="clone",
+                        branch=repo_info.get('branch', 'main')
                     )
                     
                     self.reporter.report(event)
@@ -896,6 +984,35 @@ class FileSystemMonitor:
             return pwd.getpwuid(stat_info.st_uid).pw_name
         except Exception:
             return "unknown"
+
+    def _get_repo_info(self, path: str) -> Dict[str, Optional[str]]:
+        """Extrae información del repositorio desde una ruta"""
+        result = {'repo_url': None, 'repo_name': None, 'branch': None}
+
+        try:
+            git_path = Path(path) / '.git'
+            if git_path.exists():
+                # Leer URL del remote
+                config_path = git_path / 'config' if git_path.is_dir() else None
+                if config_path and config_path.exists():
+                    config_content = config_path.read_text()
+                    url_match = re.search(r'url\s*=\s*(.+)', config_content)
+                    if url_match:
+                        result['repo_url'] = url_match.group(1).strip()
+                        repo_match = re.search(r'github\.com[:/](.+?)(?:\.git)?$', result['repo_url'])
+                        if repo_match:
+                            result['repo_name'] = repo_match.group(1)
+
+                # Leer rama actual
+                head_path = git_path / 'HEAD' if git_path.is_dir() else None
+                if head_path and head_path.exists():
+                    head_content = head_path.read_text().strip()
+                    if head_content.startswith('ref: refs/heads/'):
+                        result['branch'] = head_content.replace('ref: refs/heads/', '')
+        except Exception:
+            pass
+
+        return result
 
 
 class NetworkMonitor:
