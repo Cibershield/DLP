@@ -405,11 +405,11 @@ class EventReporter:
         self.local_log_path = Path.home() / ".dlp-agent" / "events.jsonl"
         self.local_log_path.parent.mkdir(parents=True, exist_ok=True)
         
-        # Buffer para envío en lotes
+        # Buffer para envío en lotes (tiempo real = valores bajos)
         self._send_buffer: List[DLPEvent] = []
-        self._buffer_size = 10
+        self._buffer_size = 1          # Enviar inmediatamente cada evento
         self._last_flush = time.time()
-        self._flush_interval = 5.0  # Segundos
+        self._flush_interval = 1.0     # Flush cada 1 segundo máximo
     
     def start(self):
         self.running = True

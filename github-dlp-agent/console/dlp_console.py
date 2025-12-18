@@ -464,7 +464,7 @@ DASHBOARD_HTML = """
         </table>
         
         <div class="refresh-info">
-            Auto-refresh cada 3 segundos | Último update: <span id="last-update">-</span>
+            Auto-refresh cada 1 segundo | Último update: <span id="last-update">-</span>
         </div>
     </div>
 
@@ -614,9 +614,9 @@ DASHBOARD_HTML = """
             }
         }
         
-        // Fetch inicial y luego cada 3 segundos
+        // Fetch inicial y luego cada 1 segundo (tiempo real)
         fetchEvents();
-        setInterval(fetchEvents, 3000);
+        setInterval(fetchEvents, 1000);
     </script>
 </body>
 </html>
