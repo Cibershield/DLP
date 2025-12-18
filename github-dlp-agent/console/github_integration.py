@@ -142,7 +142,14 @@ class RepositoryTracker:
     """Rastrea actividad de repositorios desde los eventos DLP"""
 
     def __init__(self, data_dir: str = None):
-        self.data_dir = Path(data_dir or "/app/data")
+        # Usar /app/data si existe (Docker), sino usar directorio local
+        if data_dir:
+            self.data_dir = Path(data_dir)
+        elif Path("/app/data").exists() or Path("/app").exists():
+            self.data_dir = Path("/app/data")
+        else:
+            # Directorio local relativo al script
+            self.data_dir = Path(__file__).parent / "data"
         self.data_dir.mkdir(parents=True, exist_ok=True)
         self.repos_file = self.data_dir / "repositories.json"
         self.agents_file = self.data_dir / "known_agents.json"
