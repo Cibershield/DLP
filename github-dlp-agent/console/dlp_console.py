@@ -731,6 +731,173 @@ DASHBOARD_HTML = """
             font-size: 0.8rem;
             font-style: italic;
         }
+
+        /* Responsive Design */
+        @media (max-width: 768px) {
+            .header {
+                padding: 15px;
+                flex-direction: column;
+                gap: 10px;
+                text-align: center;
+            }
+
+            .header h1 {
+                font-size: 1.2rem;
+            }
+
+            .stats-bar {
+                padding: 15px;
+                grid-template-columns: repeat(2, 1fr);
+                gap: 10px;
+            }
+
+            .stat-card {
+                padding: 10px;
+            }
+
+            .stat-value {
+                font-size: 1.4rem;
+            }
+
+            .stat-label {
+                font-size: 0.7rem;
+            }
+
+            .nav-tabs {
+                padding: 0 10px;
+                overflow-x: auto;
+                flex-wrap: nowrap;
+            }
+
+            .nav-tab {
+                padding: 12px 15px;
+                font-size: 0.8rem;
+                white-space: nowrap;
+            }
+
+            .main-content {
+                padding: 15px;
+            }
+
+            .section-title {
+                font-size: 1rem;
+            }
+
+            .filters {
+                flex-wrap: wrap;
+            }
+
+            .filter-btn {
+                padding: 5px 10px;
+                font-size: 0.75rem;
+            }
+
+            .events-table {
+                font-size: 0.75rem;
+            }
+
+            .events-table th,
+            .events-table td {
+                padding: 8px 6px;
+            }
+
+            .command-cell {
+                max-width: 120px;
+            }
+
+            .repo-grid {
+                grid-template-columns: 1fr;
+            }
+
+            .repo-card {
+                padding: 15px;
+            }
+
+            .repo-stats {
+                grid-template-columns: repeat(2, 1fr);
+            }
+
+            .agents-grid {
+                grid-template-columns: 1fr;
+            }
+
+            .collab-list {
+                flex-direction: column;
+            }
+
+            .collab-item {
+                width: 100%;
+            }
+
+            .footer {
+                padding: 10px 15px;
+            }
+
+            .footer p {
+                font-size: 0.75rem;
+            }
+
+            /* Organization tab mobile */
+            #org-name-input {
+                width: 100% !important;
+                margin-bottom: 10px;
+            }
+
+            #repo-search-input {
+                width: 100% !important;
+            }
+
+            .repo-card-header {
+                flex-direction: column;
+                gap: 8px;
+            }
+
+            .repo-card-header h3 {
+                font-size: 0.9rem;
+            }
+
+            .unauthorized-item {
+                flex-direction: column;
+                align-items: flex-start;
+                gap: 10px;
+            }
+        }
+
+        @media (max-width: 480px) {
+            .stats-bar {
+                grid-template-columns: repeat(2, 1fr);
+            }
+
+            .stat-value {
+                font-size: 1.2rem;
+            }
+
+            .events-table th:nth-child(6),
+            .events-table td:nth-child(6),
+            .events-table th:nth-child(7),
+            .events-table td:nth-child(7),
+            .events-table th:nth-child(8),
+            .events-table td:nth-child(8) {
+                display: none;
+            }
+
+            .repo-stats {
+                grid-template-columns: repeat(2, 1fr);
+                gap: 6px;
+            }
+
+            .repo-stat {
+                padding: 6px;
+            }
+
+            .repo-stat-value {
+                font-size: 1rem;
+            }
+
+            .repo-stat-label {
+                font-size: 0.6rem;
+            }
+        }
     </style>
 </head>
 <body>
