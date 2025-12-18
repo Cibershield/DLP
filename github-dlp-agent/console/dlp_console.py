@@ -419,6 +419,224 @@ DASHBOARD_HTML = """
         .footer strong {
             color: #00d4ff;
         }
+
+        /* Navigation tabs */
+        .nav-tabs {
+            display: flex;
+            gap: 0;
+            background: #1a1a2e;
+            padding: 0 30px;
+            border-bottom: 1px solid #333;
+        }
+
+        .nav-tab {
+            padding: 15px 25px;
+            background: transparent;
+            border: none;
+            color: #888;
+            cursor: pointer;
+            font-size: 0.95rem;
+            border-bottom: 3px solid transparent;
+            transition: all 0.3s;
+        }
+
+        .nav-tab:hover {
+            color: #e0e0e0;
+            background: rgba(0, 212, 255, 0.1);
+        }
+
+        .nav-tab.active {
+            color: #00d4ff;
+            border-bottom-color: #00d4ff;
+        }
+
+        .tab-content {
+            display: none;
+        }
+
+        .tab-content.active {
+            display: block;
+        }
+
+        /* Repository cards */
+        .repo-grid {
+            display: grid;
+            grid-template-columns: repeat(auto-fill, minmax(350px, 1fr));
+            gap: 20px;
+            margin-top: 15px;
+        }
+
+        .repo-card {
+            background: #1a1a2e;
+            border-radius: 10px;
+            padding: 20px;
+            border-left: 4px solid #00d4ff;
+        }
+
+        .repo-card.warning {
+            border-left-color: #ff4757;
+        }
+
+        .repo-card-header {
+            display: flex;
+            justify-content: space-between;
+            align-items: flex-start;
+            margin-bottom: 15px;
+        }
+
+        .repo-card-header h3 {
+            color: #00d4ff;
+            font-size: 1rem;
+            margin: 0;
+        }
+
+        .repo-card-header h3 a {
+            color: inherit;
+            text-decoration: none;
+        }
+
+        .repo-card-header h3 a:hover {
+            text-decoration: underline;
+        }
+
+        .repo-stats {
+            display: grid;
+            grid-template-columns: repeat(4, 1fr);
+            gap: 10px;
+            margin-bottom: 15px;
+        }
+
+        .repo-stat {
+            text-align: center;
+            padding: 8px;
+            background: #16213e;
+            border-radius: 6px;
+        }
+
+        .repo-stat-value {
+            font-size: 1.3rem;
+            font-weight: bold;
+            color: #fff;
+        }
+
+        .repo-stat-label {
+            font-size: 0.7rem;
+            color: #888;
+            margin-top: 2px;
+        }
+
+        .repo-users {
+            display: flex;
+            flex-wrap: wrap;
+            gap: 6px;
+        }
+
+        .user-tag {
+            background: rgba(0, 212, 255, 0.2);
+            color: #00d4ff;
+            padding: 3px 10px;
+            border-radius: 15px;
+            font-size: 0.75rem;
+        }
+
+        .alert-tag {
+            background: rgba(255, 71, 87, 0.2);
+            color: #ff4757;
+            padding: 3px 10px;
+            border-radius: 15px;
+            font-size: 0.75rem;
+        }
+
+        /* Agents section */
+        .agents-grid {
+            display: grid;
+            grid-template-columns: repeat(auto-fill, minmax(280px, 1fr));
+            gap: 15px;
+            margin-top: 15px;
+        }
+
+        .agent-info-card {
+            background: #1a1a2e;
+            border-radius: 10px;
+            padding: 15px;
+            border-left: 4px solid #00ff88;
+        }
+
+        .agent-info-card h4 {
+            color: #00ff88;
+            margin: 0 0 10px 0;
+            font-size: 0.95rem;
+        }
+
+        .agent-info-card p {
+            color: #888;
+            font-size: 0.8rem;
+            margin: 5px 0;
+        }
+
+        .agent-info-card .ip {
+            font-family: 'Fira Code', monospace;
+            color: #a29bfe;
+        }
+
+        /* Unauthorized section */
+        .unauthorized-list {
+            margin-top: 15px;
+        }
+
+        .unauthorized-item {
+            background: #1a1a2e;
+            border-radius: 8px;
+            padding: 15px;
+            margin-bottom: 10px;
+            border-left: 4px solid #ff4757;
+            display: flex;
+            justify-content: space-between;
+            align-items: center;
+        }
+
+        .unauthorized-item .details {
+            flex: 1;
+        }
+
+        .unauthorized-item .repo {
+            color: #00d4ff;
+            font-weight: 600;
+        }
+
+        .unauthorized-item .info {
+            color: #888;
+            font-size: 0.85rem;
+            margin-top: 5px;
+        }
+
+        .unauthorized-item .time {
+            color: #666;
+            font-size: 0.8rem;
+        }
+
+        .section-header {
+            display: flex;
+            justify-content: space-between;
+            align-items: center;
+            margin-bottom: 15px;
+        }
+
+        .section-header h2 {
+            color: #00d4ff;
+            font-size: 1.2rem;
+            display: flex;
+            align-items: center;
+            gap: 10px;
+        }
+
+        .count-badge {
+            background: #ff4757;
+            color: white;
+            padding: 3px 10px;
+            border-radius: 15px;
+            font-size: 0.8rem;
+        }
     </style>
 </head>
 <body>
@@ -466,10 +684,20 @@ DASHBOARD_HTML = """
         <div class="metrics-grid" id="agents-grid">
         </div>
     </div>
-    
+
+    <!-- Navigation Tabs -->
+    <div class="nav-tabs">
+        <button class="nav-tab active" onclick="switchTab('events')">📋 Eventos</button>
+        <button class="nav-tab" onclick="switchTab('repositories')">📦 Repositorios</button>
+        <button class="nav-tab" onclick="switchTab('agents')">🖥️ Agentes DLP</button>
+        <button class="nav-tab" onclick="switchTab('unauthorized')">🚨 Accesos No Autorizados <span id="unauthorized-badge" class="count-badge" style="display:none;">0</span></button>
+    </div>
+
+    <!-- Tab: Events -->
+    <div id="tab-events" class="tab-content active">
     <div class="main-content">
         <h2 class="section-title">📋 Eventos Recientes</h2>
-        
+
         <div class="filters">
             <button class="filter-btn active" onclick="filterEvents('all')">Todos</button>
             <button class="filter-btn" onclick="filterEvents('blocked')">🚨 Alertas</button>
@@ -502,6 +730,45 @@ DASHBOARD_HTML = """
             Último update: <span id="last-update">-</span>
         </div>
     </div>
+    </div>
+
+    <!-- Tab: Repositories -->
+    <div id="tab-repositories" class="tab-content">
+    <div class="main-content">
+        <div class="section-header">
+            <h2>📦 Repositorios Monitoreados</h2>
+        </div>
+        <div class="repo-grid" id="repos-grid">
+            <p style="color: #666; grid-column: 1/-1; text-align: center; padding: 40px;">Cargando repositorios...</p>
+        </div>
+    </div>
+    </div>
+
+    <!-- Tab: Agents -->
+    <div id="tab-agents" class="tab-content">
+    <div class="main-content">
+        <div class="section-header">
+            <h2>🖥️ Agentes DLP Registrados</h2>
+        </div>
+        <p style="color: #888; margin-bottom: 15px;">Equipos con el agente DLP instalado que han reportado actividad.</p>
+        <div class="agents-grid" id="dlp-agents-grid">
+            <p style="color: #666;">Cargando agentes...</p>
+        </div>
+    </div>
+    </div>
+
+    <!-- Tab: Unauthorized -->
+    <div id="tab-unauthorized" class="tab-content">
+    <div class="main-content">
+        <div class="section-header">
+            <h2>🚨 Accesos desde Equipos Sin Agente DLP</h2>
+        </div>
+        <p style="color: #888; margin-bottom: 15px;">Clones de repositorios detectados desde equipos que no tienen el agente DLP instalado.</p>
+        <div class="unauthorized-list" id="unauthorized-list">
+            <p style="color: #666;">No se han detectado accesos no autorizados.</p>
+        </div>
+    </div>
+    </div>
 
     <footer class="footer">
         <p>Desarrollado por <strong>Cibershield R.L.</strong> 2025. Todos los derechos reservados. | Versión 0.8</p>
@@ -511,6 +778,23 @@ DASHBOARD_HTML = """
         let currentFilter = 'all';
         let allEvents = [];
         let agentMetrics = {};
+        let repositoriesData = [];
+        let dlpAgentsData = {};
+        let unauthorizedData = [];
+        let currentTab = 'events';
+
+        function switchTab(tabName) {
+            currentTab = tabName;
+            document.querySelectorAll('.nav-tab').forEach(btn => btn.classList.remove('active'));
+            document.querySelectorAll('.tab-content').forEach(tab => tab.classList.remove('active'));
+            event.target.classList.add('active');
+            document.getElementById('tab-' + tabName).classList.add('active');
+
+            // Cargar datos de la pestaña
+            if (tabName === 'repositories') fetchRepositories();
+            if (tabName === 'agents') fetchDLPAgents();
+            if (tabName === 'unauthorized') fetchUnauthorized();
+        }
         
         function formatTime(isoString) {
             const date = new Date(isoString);
@@ -690,6 +974,155 @@ DASHBOARD_HTML = """
         // Fetch inicial y luego cada 1 segundo (tiempo real)
         fetchEvents();
         setInterval(fetchEvents, 1000);
+
+        // También actualizar datos de repos/unauthorized periódicamente para el badge
+        setInterval(fetchUnauthorizedCount, 5000);
+        fetchUnauthorizedCount();
+
+        async function fetchUnauthorizedCount() {
+            try {
+                const response = await fetch('/api/unauthorized');
+                const data = await response.json();
+                unauthorizedData = data.unauthorized || [];
+                const badge = document.getElementById('unauthorized-badge');
+                if (unauthorizedData.length > 0) {
+                    badge.style.display = 'inline';
+                    badge.textContent = unauthorizedData.length;
+                } else {
+                    badge.style.display = 'none';
+                }
+            } catch (error) {
+                console.error('Error fetching unauthorized:', error);
+            }
+        }
+
+        async function fetchRepositories() {
+            try {
+                const response = await fetch('/api/repositories');
+                const data = await response.json();
+                repositoriesData = data.repositories || [];
+                renderRepositories();
+            } catch (error) {
+                console.error('Error fetching repositories:', error);
+            }
+        }
+
+        function renderRepositories() {
+            const grid = document.getElementById('repos-grid');
+            if (repositoriesData.length === 0) {
+                grid.innerHTML = '<p style="color: #666; grid-column: 1/-1; text-align: center; padding: 40px;">No hay repositorios monitoreados aún.</p>';
+                return;
+            }
+
+            grid.innerHTML = repositoriesData.map(repo => {
+                const hasUnauthorized = repo.unauthorized_count > 0;
+                return `
+                    <div class="repo-card ${hasUnauthorized ? 'warning' : ''}">
+                        <div class="repo-card-header">
+                            <h3><a href="${repo.url || '#'}" target="_blank">${repo.name}</a></h3>
+                            ${hasUnauthorized ? '<span class="alert-tag">⚠️ ' + repo.unauthorized_count + ' sin agente</span>' : ''}
+                        </div>
+                        <div class="repo-stats">
+                            <div class="repo-stat">
+                                <div class="repo-stat-value">${repo.total_clones}</div>
+                                <div class="repo-stat-label">Clones</div>
+                            </div>
+                            <div class="repo-stat">
+                                <div class="repo-stat-value">${repo.total_pushes}</div>
+                                <div class="repo-stat-label">Pushes</div>
+                            </div>
+                            <div class="repo-stat">
+                                <div class="repo-stat-value">${repo.total_pulls}</div>
+                                <div class="repo-stat-label">Pulls</div>
+                            </div>
+                            <div class="repo-stat">
+                                <div class="repo-stat-value">${repo.total_commits}</div>
+                                <div class="repo-stat-label">Commits</div>
+                            </div>
+                        </div>
+                        <div class="repo-users">
+                            ${repo.users.map(u => '<span class="user-tag">👤 ' + u + '</span>').join('')}
+                        </div>
+                    </div>
+                `;
+            }).join('');
+        }
+
+        async function fetchDLPAgents() {
+            try {
+                const response = await fetch('/api/agents');
+                const data = await response.json();
+                dlpAgentsData = data.agents || {};
+                renderDLPAgents();
+            } catch (error) {
+                console.error('Error fetching agents:', error);
+            }
+        }
+
+        function renderDLPAgents() {
+            const grid = document.getElementById('dlp-agents-grid');
+            const agents = Object.values(dlpAgentsData);
+
+            if (agents.length === 0) {
+                grid.innerHTML = '<p style="color: #666;">No hay agentes DLP registrados aún.</p>';
+                return;
+            }
+
+            grid.innerHTML = agents.map(agent => `
+                <div class="agent-info-card">
+                    <h4>🖥️ ${agent.hostname}</h4>
+                    <p>IP: <span class="ip">${agent.ip}</span></p>
+                    <p>Primera vez: ${formatDateTime(agent.first_seen)}</p>
+                    <p>Última actividad: ${formatDateTime(agent.last_seen)}</p>
+                </div>
+            `).join('');
+        }
+
+        async function fetchUnauthorized() {
+            try {
+                const response = await fetch('/api/unauthorized');
+                const data = await response.json();
+                unauthorizedData = data.unauthorized || [];
+                renderUnauthorized();
+            } catch (error) {
+                console.error('Error fetching unauthorized:', error);
+            }
+        }
+
+        function renderUnauthorized() {
+            const list = document.getElementById('unauthorized-list');
+
+            if (unauthorizedData.length === 0) {
+                list.innerHTML = '<p style="color: #00ff88; padding: 20px; text-align: center;">✓ No se han detectado accesos desde equipos sin agente DLP.</p>';
+                return;
+            }
+
+            list.innerHTML = unauthorizedData.map(item => `
+                <div class="unauthorized-item">
+                    <div class="details">
+                        <span class="repo">📦 ${item.repo_name}</span>
+                        <div class="info">
+                            👤 ${item.username || 'unknown'} desde
+                            <strong>${item.hostname || 'desconocido'}</strong>
+                            (${item.source_ip || 'IP desconocida'})
+                        </div>
+                    </div>
+                    <div class="time">${formatDateTime(item.timestamp)}</div>
+                </div>
+            `).join('');
+        }
+
+        function formatDateTime(isoString) {
+            if (!isoString) return '-';
+            const date = new Date(isoString);
+            return date.toLocaleString('es-ES', {
+                day: '2-digit',
+                month: '2-digit',
+                year: '2-digit',
+                hour: '2-digit',
+                minute: '2-digit'
+            });
+        }
     </script>
 </body>
 </html>
