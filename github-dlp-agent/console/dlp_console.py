@@ -437,10 +437,10 @@ DASHBOARD_HTML = """
         
         <div class="filters">
             <button class="filter-btn active" onclick="filterEvents('all')">Todos</button>
-            <button class="filter-btn" onclick="filterEvents('blocked')">Solo Alertas</button>
-            <button class="filter-btn" onclick="filterEvents('allowed')">Permitidos</button>
-            <button class="filter-btn" onclick="filterEvents('git_command')">Git Commands</button>
-            <button class="filter-btn" onclick="filterEvents('network_connection')">Red</button>
+            <button class="filter-btn" onclick="filterEvents('blocked')">🚨 Alertas</button>
+            <button class="filter-btn" onclick="filterEvents('allowed')">✓ Permitidos</button>
+            <button class="filter-btn" onclick="filterEvents('git')">📦 Git</button>
+            <button class="filter-btn" onclick="filterEvents('network')">🌐 Red</button>
         </div>
         
         <table class="events-table">
@@ -529,10 +529,18 @@ DASHBOARD_HTML = """
                 filtered = filtered.filter(e => !e.is_allowed);
             } else if (currentFilter === 'allowed') {
                 filtered = filtered.filter(e => e.is_allowed);
-            } else if (currentFilter === 'git_command') {
-                filtered = filtered.filter(e => e.event_type === 'git_command');
-            } else if (currentFilter === 'network_connection') {
-                filtered = filtered.filter(e => e.event_type === 'network_connection');
+            } else if (currentFilter === 'git') {
+                // Incluir todos los eventos relacionados con Git
+                filtered = filtered.filter(e =>
+                    e.event_type === 'git_command' ||
+                    e.event_type === 'new_repo_detected' ||
+                    (e.command_line && e.command_line.includes('git'))
+                );
+            } else if (currentFilter === 'network') {
+                filtered = filtered.filter(e =>
+                    e.event_type === 'network_connection' ||
+                    e.event_type.startsWith('kernel_')
+                );
             }
             
             if (filtered.length === 0) {
