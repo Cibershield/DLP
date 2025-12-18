@@ -2,11 +2,9 @@
 # Cibershield R.L. 2025
 #
 # Uso:
-#   docker-compose up -d
-#   docker-compose logs -f
-#   docker-compose down
-
-version: '3.8'
+#   docker compose up -d
+#   docker compose logs -f
+#   docker compose down
 
 services:
   dlp-console:
@@ -22,6 +20,9 @@ services:
       - dlp-data:/app/data
     environment:
       - TZ=America/Costa_Rica
+    dns:
+      - 8.8.8.8
+      - 8.8.4.4
     healthcheck:
       test: ["CMD", "python", "-c", "import socket; s=socket.socket(); s.connect(('localhost', 8080)); s.close()"]
       interval: 30s
