@@ -35,7 +35,8 @@ class GitHubIntegration:
 
         # Cache para reducir llamadas a la API
         self._cache = {}
-        self._cache_ttl = 300  # 5 minutos
+        self._cache_ttl = 600  # 10 minutos para datos generales
+        self._org_cache_ttl = 1800  # 30 minutos para organizaciones (cambian poco)
 
     def is_configured(self) -> bool:
         """Verifica si hay un token configurado"""
@@ -140,7 +141,14 @@ class GitHubIntegration:
     def get_org_repos(self, org: str) -> List[Dict]:
         """
         Obtiene todos los repositorios de una organización.
+        Usa caché de 30 minutos.
         """
+        cache_key = f"org_repos:{org}"
+        if cache_key in self._cache:
+            cached = self._cache[cache_key]
+            if (datetime.now() - cached['time']).seconds < self._org_cache_ttl:
+                return cached['data']
+
         repos = []
         page = 1
         while True:
@@ -166,28 +174,48 @@ class GitHubIntegration:
             if len(data) < 100:
                 break
             page += 1
+
+        # Guardar en caché
+        self._cache[cache_key] = {'data': repos, 'time': datetime.now()}
         return repos
 
     def get_org_members(self, org: str) -> List[Dict]:
         """
         Obtiene los miembros de una organización.
+        Usa caché de 30 minutos.
         """
+        cache_key = f"org_members:{org}"
+        if cache_key in self._cache:
+            cached = self._cache[cache_key]
+            if (datetime.now() - cached['time']).seconds < self._org_cache_ttl:
+                return cached['data']
+
         data = self._make_request(f"/orgs/{org}/members")
+        members = []
         if isinstance(data, list):
-            return [{
+            members = [{
                 "username": m.get("login"),
                 "avatar": m.get("avatar_url"),
                 "role": "member"
             } for m in data]
-        return []
+
+        self._cache[cache_key] = {'data': members, 'time': datetime.now()}
+        return members
 
     def get_org_info(self, org: str) -> Optional[Dict]:
         """
         Obtiene información de la organización.
+        Usa caché de 30 minutos.
         """
+        cache_key = f"org_info:{org}"
+        if cache_key in self._cache:
+            cached = self._cache[cache_key]
+            if (datetime.now() - cached['time']).seconds < self._org_cache_ttl:
+                return cached['data']
+
         data = self._make_request(f"/orgs/{org}")
         if data and "error" not in data:
-            return {
+            info = {
                 "name": data.get("name"),
                 "login": data.get("login"),
                 "description": data.get("description"),
@@ -197,6 +225,8 @@ class GitHubIntegration:
                 "members_count": data.get("members_count", 0),
                 "avatar": data.get("avatar_url"),
             }
+            self._cache[cache_key] = {'data': info, 'time': datetime.now()}
+            return info
         return None
 
 
