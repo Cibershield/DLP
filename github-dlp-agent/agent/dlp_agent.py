@@ -220,6 +220,25 @@ CONFIG = {
 }
 
 
+def get_local_ip() -> str:
+    """Obtiene la IP local del equipo"""
+    try:
+        # Conectar a un servidor externo para obtener la IP local usada
+        with socket.socket(socket.AF_INET, socket.SOCK_DGRAM) as s:
+            s.connect(("8.8.8.8", 80))
+            return s.getsockname()[0]
+    except Exception:
+        try:
+            # Fallback: obtener primera IP no-localhost
+            hostname = socket.gethostname()
+            return socket.gethostbyname(hostname)
+        except Exception:
+            return "unknown"
+
+# IP local del equipo (se obtiene una vez al iniciar)
+LOCAL_IP = get_local_ip()
+
+
 @dataclass
 class DLPEvent:
     """Representa un evento de seguridad detectado"""
@@ -234,6 +253,8 @@ class DLPEvent:
     target_url: Optional[str] = None
     is_allowed: bool = False
     reason: str = ""
+    # IP del equipo que genera el evento
+    source_ip: Optional[str] = None
     # Campos adicionales para eventos de red
     remote_ip: Optional[str] = None
     remote_port: Optional[int] = None
@@ -659,7 +680,7 @@ class ProcessMonitor:
                     event = DLPEvent(
                         timestamp=datetime.now().isoformat(),
                         event_type="git_command",
-                        username=pinfo.get('username', 'unknown'),
+                        username=pinfo.get('username') or os.getenv('USER', 'unknown'),
                         hostname=self.hostname,
                         process_name=name,
                         command_line=cmd_str[:500],  # Limitar longitud
@@ -667,7 +688,8 @@ class ProcessMonitor:
                         working_directory=pinfo.get('cwd', 'unknown') or 'unknown',
                         target_url=target_url,
                         is_allowed=is_allowed,
-                        reason="IDE autorizado" if is_allowed else "Ejecutado fuera de IDE autorizado"
+                        reason="IDE autorizado" if is_allowed else "Ejecutado fuera de IDE autorizado",
+                        source_ip=LOCAL_IP
                     )
                     
                     # Log según estado
@@ -849,7 +871,7 @@ class FileSystemMonitor:
                     event = DLPEvent(
                         timestamp=datetime.now().isoformat(),
                         event_type="new_repo_detected",
-                        username=username,
+                        username=username or os.getenv('USER', 'unknown'),
                         hostname=self.hostname,
                         process_name="filesystem",
                         command_line="",
@@ -857,7 +879,8 @@ class FileSystemMonitor:
                         working_directory=path,
                         target_url=None,
                         is_allowed=False,
-                        reason=f"Nueva carpeta .git creada en {path}"
+                        reason=f"Nueva carpeta .git creada en {path}",
+                        source_ip=LOCAL_IP
                     )
                     
                     self.reporter.report(event)
@@ -1007,7 +1030,7 @@ class NetworkMonitor:
                 event = DLPEvent(
                     timestamp=datetime.now().isoformat(),
                     event_type="network_connection",
-                    username=proc_info.get('username', 'unknown'),
+                    username=proc_info.get('username') or os.getenv('USER', 'unknown'),
                     hostname=self.hostname,
                     process_name=proc_info.get('name', 'unknown'),
                     command_line=proc_info.get('cmdline', '')[:300],
@@ -1017,7 +1040,8 @@ class NetworkMonitor:
                     remote_ip=remote_ip,
                     remote_port=remote_port,
                     is_allowed=is_allowed,
-                    reason="IDE autorizado" if is_allowed else "Conexión a GitHub fuera de IDE"
+                    reason="IDE autorizado" if is_allowed else "Conexión a GitHub fuera de IDE",
+                    source_ip=LOCAL_IP
                 )
                 
                 # Log
@@ -1134,7 +1158,8 @@ class MetricsReporter:
                         system_cpu=metrics.system_cpu,
                         system_memory=metrics.system_memory,
                         is_allowed=True,
-                        reason=f"throttled={metrics.is_throttled}"
+                        reason=f"throttled={metrics.is_throttled}",
+                        source_ip=LOCAL_IP
                     )
                     
                     self.reporter.report(event)
@@ -1202,7 +1227,8 @@ class DLPAgent:
                     is_allowed=False,
                     reason=f"Detectado via {event.source}",
                     remote_ip=event.remote_ip,
-                    remote_port=event.remote_port
+                    remote_port=event.remote_port,
+                    source_ip=LOCAL_IP
                 )
                 self.reporter.report(dlp_event)
 

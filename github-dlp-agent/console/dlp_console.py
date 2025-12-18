@@ -451,9 +451,9 @@ DASHBOARD_HTML = """
                     <th>Tipo</th>
                     <th>Usuario</th>
                     <th>Host</th>
+                    <th>IP Origen</th>
                     <th>Proceso</th>
-                    <th>Comando/IP</th>
-                    <th>Destino</th>
+                    <th>Comando</th>
                 </tr>
             </thead>
             <tbody id="events-body">
@@ -545,13 +545,11 @@ DASHBOARD_HTML = """
                     <td class="time-cell">${formatTime(event.timestamp)}</td>
                     <td>${getEventBadge(event)}</td>
                     <td>${event.event_type}</td>
-                    <td>${event.username}</td>
+                    <td>${event.username || 'unknown'}</td>
                     <td>${event.hostname}</td>
+                    <td class="ip-cell">${event.source_ip || '-'}</td>
                     <td>${event.process_name || '-'}</td>
                     <td>${getCommandDisplay(event)}</td>
-                    <td class="url-cell">
-                        ${event.target_url ? `<a href="${event.target_url}" target="_blank">${event.target_url}</a>` : (event.parent_process || '-')}
-                    </td>
                 </tr>
             `).join('');
         }
