@@ -20,6 +20,17 @@ services:
       - dlp-data:/app/data
     environment:
       - TZ=America/Costa_Rica
+      # GitHub API (para gestión de repositorios)
+      - GITHUB_TOKEN=ghp_xxxxx
+      # Microsoft Entra (Azure AD) - dejar vacío para deshabilitar
+      - MICROSOFT_CLIENT_ID=
+      - MICROSOFT_CLIENT_SECRET=
+      - MICROSOFT_TENANT_ID=
+      # Google Workspace - dejar vacío para deshabilitar
+      - GOOGLE_CLIENT_ID=
+      - GOOGLE_CLIENT_SECRET=
+      # Clave secreta para sesiones (se genera automáticamente si está vacía)
+      - SECRET_KEY=
     dns:
       - 8.8.8.8
       - 8.8.4.4

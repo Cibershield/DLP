@@ -13,8 +13,9 @@ from typing import List, Dict, Optional
 from dataclasses import dataclass
 from collections import deque
 
-from flask import Flask, render_template_string, jsonify, Response
+from flask import Flask, render_template_string, jsonify, Response, redirect, url_for
 from flask_cors import CORS
+from flask_login import current_user
 
 # Configuración
 CONSOLE_CONFIG = {
@@ -45,6 +46,16 @@ agent_metrics: Dict[str, Dict] = {}  # hostname -> últimas métricas
 
 app = Flask(__name__)
 CORS(app)
+
+# Inicializar autenticación (Microsoft Entra / Google Workspace)
+AUTH_ENABLED = False
+try:
+    from auth import init_auth, is_auth_enabled
+    init_auth(app)
+    AUTH_ENABLED = True
+except ImportError:
+    def is_auth_enabled():
+        return False
 
 # Template HTML para el dashboard
 DASHBOARD_HTML = """
@@ -95,13 +106,64 @@ DASHBOARD_HTML = """
             gap: 8px;
             color: #00ff88;
         }
-        
+
         .status-dot {
             width: 10px;
             height: 10px;
             background: #00ff88;
             border-radius: 50%;
             animation: pulse 2s infinite;
+        }
+
+        .user-info {
+            display: flex;
+            align-items: center;
+            gap: 12px;
+            padding: 8px 16px;
+            background: rgba(0, 212, 255, 0.1);
+            border-radius: 8px;
+            margin-left: 20px;
+        }
+
+        .user-info img {
+            width: 32px;
+            height: 32px;
+            border-radius: 50%;
+            border: 2px solid #00d4ff;
+        }
+
+        .user-info .user-name {
+            color: #e0e0e0;
+            font-size: 0.9rem;
+        }
+
+        .user-info .user-provider {
+            color: #888;
+            font-size: 0.7rem;
+            text-transform: uppercase;
+        }
+
+        .logout-btn {
+            padding: 6px 12px;
+            background: transparent;
+            color: #ff4757;
+            border: 1px solid #ff4757;
+            border-radius: 4px;
+            cursor: pointer;
+            font-size: 0.8rem;
+            transition: all 0.3s;
+            text-decoration: none;
+        }
+
+        .logout-btn:hover {
+            background: #ff4757;
+            color: white;
+        }
+
+        .header-right {
+            display: flex;
+            align-items: center;
+            gap: 15px;
         }
         
         @keyframes pulse {
@@ -902,10 +964,22 @@ DASHBOARD_HTML = """
 </head>
 <body>
     <div class="header">
-        <h1>DLP Console v0.8</h1>
-        <div class="status">
-            <span class="status-dot"></span>
-            <span>Monitoreando</span>
+        <h1>DLP Console v0.9</h1>
+        <div class="header-right">
+            <div class="status">
+                <span class="status-dot"></span>
+                <span>Monitoreando</span>
+            </div>
+            <div id="user-info-container" style="display: none;">
+                <div class="user-info">
+                    <img id="user-avatar" src="" alt="Avatar" style="display: none;">
+                    <div>
+                        <div class="user-name" id="user-name"></div>
+                        <div class="user-provider" id="user-provider"></div>
+                    </div>
+                </div>
+                <a href="/logout" class="logout-btn">Cerrar Sesión</a>
+            </div>
         </div>
     </div>
     
@@ -1059,7 +1133,7 @@ DASHBOARD_HTML = """
     </div>
 
     <footer class="footer">
-        <p>Desarrollado por <strong>Cibershield R.L.</strong> 2025. Todos los derechos reservados. | Versión 0.8</p>
+        <p>Desarrollado por <strong>Cibershield R.L.</strong> 2025. Todos los derechos reservados. | Versión 0.9</p>
     </footer>
 
     <script>
@@ -1072,6 +1146,38 @@ DASHBOARD_HTML = """
         let currentTab = 'events';
         let orgReposData = [];
         let currentOrgName = '';
+        let currentUser = null;
+
+        // Verificar estado de autenticación
+        async function checkAuthStatus() {
+            try {
+                const response = await fetch('/api/auth/status');
+                const data = await response.json();
+
+                if (data.enabled && data.authenticated && data.user) {
+                    currentUser = data.user;
+                    const container = document.getElementById('user-info-container');
+                    const nameEl = document.getElementById('user-name');
+                    const providerEl = document.getElementById('user-provider');
+                    const avatarEl = document.getElementById('user-avatar');
+
+                    nameEl.textContent = data.user.name || data.user.email;
+                    providerEl.textContent = data.user.provider === 'microsoft' ? 'Microsoft' : 'Google';
+
+                    if (data.user.avatar) {
+                        avatarEl.src = data.user.avatar;
+                        avatarEl.style.display = 'block';
+                    }
+
+                    container.style.display = 'flex';
+                }
+            } catch (error) {
+                console.log('Auth status check:', error.message);
+            }
+        }
+
+        // Verificar auth al cargar
+        checkAuthStatus();
 
         function switchTab(tabName) {
             currentTab = tabName;
@@ -1856,6 +1962,10 @@ def process_event(event_data: Dict):
 @app.route('/')
 def dashboard():
     """Página principal del dashboard"""
+    # Si auth está habilitado y usuario no autenticado, redirigir a login
+    if AUTH_ENABLED and is_auth_enabled():
+        if not current_user.is_authenticated:
+            return redirect('/login')
     return render_template_string(DASHBOARD_HTML)
 
 
@@ -2078,12 +2188,26 @@ def api_update_collaborator_permission(org, repo, username):
 def main():
     """Punto de entrada principal"""
     print("=" * 60)
-    print("🛡️  DLP Console v0.8")
+    print("🛡️  DLP Console v0.9")
     print("   Desarrollado por Cibershield R.L. 2025")
     print("   Todos los derechos reservados.")
     print("=" * 60)
     print(f"📡 TCP Receiver: puerto {CONSOLE_CONFIG['tcp_port']}")
     print(f"🌐 Web Dashboard: http://localhost:{CONSOLE_CONFIG['web_port']}")
+
+    # Estado de autenticación
+    if AUTH_ENABLED and is_auth_enabled():
+        print("🔐 Autenticación: HABILITADA")
+        import os
+        if os.getenv('MICROSOFT_CLIENT_ID'):
+            print("   ✓ Microsoft Entra configurado")
+        if os.getenv('GOOGLE_CLIENT_ID'):
+            print("   ✓ Google Workspace configurado")
+    else:
+        print("🔓 Autenticación: DESHABILITADA (acceso libre)")
+        print("   Para habilitar, configure variables de entorno:")
+        print("   - MICROSOFT_CLIENT_ID, MICROSOFT_CLIENT_SECRET, MICROSOFT_TENANT_ID")
+        print("   - GOOGLE_CLIENT_ID, GOOGLE_CLIENT_SECRET")
     print("=" * 60)
     
     # Iniciar receiver TCP en thread separado

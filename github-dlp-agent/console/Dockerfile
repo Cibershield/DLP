@@ -4,7 +4,7 @@
 FROM python:3.11-slim
 
 LABEL maintainer="Cibershield R.L."
-LABEL version="0.8"
+LABEL version="0.9"
 LABEL description="DLP Console - Dashboard centralizado para monitoreo de agentes"
 
 # Variables de entorno
@@ -25,6 +25,7 @@ RUN pip install --no-cache-dir -r requirements-console.txt
 # Copiar código de la consola
 COPY dlp_console.py .
 COPY github_integration.py .
+COPY auth.py .
 
 # Crear directorio para datos
 RUN mkdir -p /app/data
