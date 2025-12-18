@@ -637,6 +637,100 @@ DASHBOARD_HTML = """
             border-radius: 15px;
             font-size: 0.8rem;
         }
+
+        /* Collaborators section */
+        .collab-section {
+            margin-top: 15px;
+            padding-top: 15px;
+            border-top: 1px solid #333;
+        }
+
+        .collab-section h4 {
+            color: #888;
+            font-size: 0.8rem;
+            margin-bottom: 10px;
+        }
+
+        .collab-list {
+            display: flex;
+            flex-wrap: wrap;
+            gap: 8px;
+        }
+
+        .collab-item {
+            display: flex;
+            align-items: center;
+            gap: 6px;
+            background: #16213e;
+            padding: 5px 10px;
+            border-radius: 6px;
+            font-size: 0.8rem;
+        }
+
+        .collab-item img {
+            width: 20px;
+            height: 20px;
+            border-radius: 50%;
+        }
+
+        .collab-role {
+            font-size: 0.7rem;
+            padding: 2px 6px;
+            border-radius: 3px;
+            margin-left: 5px;
+        }
+
+        .collab-role.admin { background: #ff4757; color: white; }
+        .collab-role.write { background: #ffa502; color: black; }
+        .collab-role.read { background: #2ed573; color: black; }
+        .collab-role.maintainer { background: #a29bfe; color: black; }
+
+        /* Clone locations */
+        .clone-section {
+            margin-top: 12px;
+            padding-top: 12px;
+            border-top: 1px solid #333;
+        }
+
+        .clone-section h4 {
+            color: #888;
+            font-size: 0.8rem;
+            margin-bottom: 8px;
+        }
+
+        .clone-item {
+            background: #16213e;
+            padding: 8px 12px;
+            border-radius: 6px;
+            margin-bottom: 6px;
+            font-size: 0.8rem;
+        }
+
+        .clone-item .path {
+            font-family: 'Fira Code', monospace;
+            color: #ffa502;
+            font-size: 0.75rem;
+        }
+
+        .clone-item .meta {
+            color: #666;
+            font-size: 0.7rem;
+            margin-top: 4px;
+        }
+
+        .clone-item.no-agent {
+            border-left: 3px solid #ff4757;
+        }
+
+        .clone-item.with-agent {
+            border-left: 3px solid #00ff88;
+        }
+
+        .no-token-msg {
+            color: #888;
+            font-size: 0.8rem;
+            font-style: italic;
+        }
     </style>
 </head>
 <body>
@@ -1022,6 +1116,54 @@ DASHBOARD_HTML = """
 
             grid.innerHTML = repositoriesData.map(repo => {
                 const hasUnauthorized = repo.unauthorized_count > 0;
+
+                // Renderizar colaboradores de GitHub
+                let collabHtml = '';
+                if (repo.collaborators && repo.collaborators.length > 0) {
+                    collabHtml = `
+                        <div class="collab-section">
+                            <h4>👥 Colaboradores GitHub (${repo.collaborators.length})</h4>
+                            <div class="collab-list">
+                                ${repo.collaborators.map(c => `
+                                    <div class="collab-item">
+                                        <img src="${c.avatar}" alt="${c.username}">
+                                        <span>${c.username}</span>
+                                        <span class="collab-role ${c.role.toLowerCase()}">${c.role}</span>
+                                    </div>
+                                `).join('')}
+                            </div>
+                        </div>
+                    `;
+                } else {
+                    collabHtml = `
+                        <div class="collab-section">
+                            <h4>👥 Colaboradores GitHub</h4>
+                            <p class="no-token-msg">Configure GITHUB_TOKEN para ver colaboradores</p>
+                        </div>
+                    `;
+                }
+
+                // Renderizar ubicaciones de clonación
+                let cloneHtml = '';
+                if (repo.clone_locations && repo.clone_locations.length > 0) {
+                    cloneHtml = `
+                        <div class="clone-section">
+                            <h4>📍 Ubicaciones de Clonación (${repo.clone_locations.length})</h4>
+                            ${repo.clone_locations.map(c => `
+                                <div class="clone-item ${c.is_from_agent ? 'with-agent' : 'no-agent'}">
+                                    <div class="path">${c.path || 'Ruta desconocida'}</div>
+                                    <div class="meta">
+                                        🖥️ ${c.hostname || '?'} (${c.ip || '?'}) •
+                                        👤 ${c.username || '?'} •
+                                        📅 ${formatDateTime(c.timestamp)}
+                                        ${c.is_from_agent ? ' ✓ Con Agente' : ' ⚠️ Sin Agente'}
+                                    </div>
+                                </div>
+                            `).join('')}
+                        </div>
+                    `;
+                }
+
                 return `
                     <div class="repo-card ${hasUnauthorized ? 'warning' : ''}">
                         <div class="repo-card-header">
@@ -1047,8 +1189,11 @@ DASHBOARD_HTML = """
                             </div>
                         </div>
                         <div class="repo-users">
+                            <small style="color:#666;">Usuarios DLP:</small>
                             ${repo.users.map(u => '<span class="user-tag">👤 ' + u + '</span>').join('')}
                         </div>
+                        ${collabHtml}
+                        ${cloneHtml}
                     </div>
                 `;
             }).join('');
@@ -1316,6 +1461,26 @@ def api_repositories():
     # Formatear para el frontend
     formatted = []
     for name, data in repos.items():
+        # Obtener colaboradores de GitHub si está configurado
+        collaborators = []
+        if github_api and github_api.is_configured() and '/' in name:
+            parts = name.split('/')
+            if len(parts) >= 2:
+                owner, repo = parts[0], parts[1]
+                collaborators = github_api.get_repo_collaborators(owner, repo)
+
+        # Obtener ubicaciones de clonación
+        clone_locations = []
+        for clone in data.get("clone_events", []):
+            clone_locations.append({
+                "path": clone.get("repo_path"),
+                "hostname": clone.get("hostname"),
+                "ip": clone.get("source_ip"),
+                "username": clone.get("username"),
+                "timestamp": clone.get("timestamp"),
+                "is_from_agent": clone.get("is_from_agent", False)
+            })
+
         formatted.append({
             "name": name,
             "url": data.get("repo_url"),
@@ -1327,7 +1492,9 @@ def api_repositories():
             "users": list(data.get("users", {}).keys()),
             "user_count": len(data.get("users", {})),
             "unauthorized_count": len(data.get("unauthorized_access", [])),
-            "recent_activity": data.get("activity", [])[-10:]
+            "recent_activity": data.get("activity", [])[-10:],
+            "collaborators": collaborators,
+            "clone_locations": clone_locations
         })
     return jsonify({"repositories": formatted})
 
