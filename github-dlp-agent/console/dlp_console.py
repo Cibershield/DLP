@@ -997,19 +997,25 @@ DASHBOARD_HTML = """
         }
 
         async function fetchRepositories() {
+            const grid = document.getElementById('repos-grid');
             try {
                 const response = await fetch('/api/repositories');
                 const data = await response.json();
-                repositoriesData = data.repositories || [];
+                if (data.error) {
+                    grid.innerHTML = '<p style="color: #ff4757; grid-column: 1/-1; text-align: center; padding: 40px;">Error: ' + data.error + '</p>';
+                    return;
+                }
+                repositoriesData = Array.isArray(data.repositories) ? data.repositories : [];
                 renderRepositories();
             } catch (error) {
                 console.error('Error fetching repositories:', error);
+                grid.innerHTML = '<p style="color: #ff4757; grid-column: 1/-1; text-align: center; padding: 40px;">Error de conexión: ' + error.message + '</p>';
             }
         }
 
         function renderRepositories() {
             const grid = document.getElementById('repos-grid');
-            if (repositoriesData.length === 0) {
+            if (!repositoriesData || repositoriesData.length === 0) {
                 grid.innerHTML = '<p style="color: #666; grid-column: 1/-1; text-align: center; padding: 40px;">No hay repositorios monitoreados aún.</p>';
                 return;
             }
@@ -1049,13 +1055,19 @@ DASHBOARD_HTML = """
         }
 
         async function fetchDLPAgents() {
+            const grid = document.getElementById('dlp-agents-grid');
             try {
                 const response = await fetch('/api/agents');
                 const data = await response.json();
+                if (data.error) {
+                    grid.innerHTML = '<p style="color: #ff4757;">Error: ' + data.error + '</p>';
+                    return;
+                }
                 dlpAgentsData = data.agents || {};
                 renderDLPAgents();
             } catch (error) {
                 console.error('Error fetching agents:', error);
+                grid.innerHTML = '<p style="color: #ff4757;">Error de conexión: ' + error.message + '</p>';
             }
         }
 
@@ -1064,7 +1076,7 @@ DASHBOARD_HTML = """
             const agents = Object.values(dlpAgentsData);
 
             if (agents.length === 0) {
-                grid.innerHTML = '<p style="color: #666;">No hay agentes DLP registrados aún.</p>';
+                grid.innerHTML = '<p style="color: #666;">No hay agentes DLP registrados aún. Los agentes aparecerán cuando envíen su primer evento.</p>';
                 return;
             }
 
@@ -1079,13 +1091,19 @@ DASHBOARD_HTML = """
         }
 
         async function fetchUnauthorized() {
+            const list = document.getElementById('unauthorized-list');
             try {
                 const response = await fetch('/api/unauthorized');
                 const data = await response.json();
+                if (data.error) {
+                    list.innerHTML = '<p style="color: #ff4757;">Error: ' + data.error + '</p>';
+                    return;
+                }
                 unauthorizedData = data.unauthorized || [];
                 renderUnauthorized();
             } catch (error) {
                 console.error('Error fetching unauthorized:', error);
+                list.innerHTML = '<p style="color: #ff4757;">Error de conexión: ' + error.message + '</p>';
             }
         }
 
