@@ -390,8 +390,8 @@ class ResourceManager:
 
 
 class EventReporter:
-    """Envía eventos a la consola central - Versión optimizada"""
-    
+    """Envía eventos a la consola central - Con soporte offline"""
+
     def __init__(self, host: str, port: int, resource_manager: ResourceManager):
         self.host = host
         self.port = port
@@ -400,23 +400,32 @@ class EventReporter:
         self.running = False
         self._thread: Optional[threading.Thread] = None
         self.logger = logging.getLogger("EventReporter")
-        
-        # También guardar eventos localmente
-        self.local_log_path = Path.home() / ".dlp-agent" / "events.jsonl"
-        self.local_log_path.parent.mkdir(parents=True, exist_ok=True)
-        
+
+        # Archivos para persistencia offline
+        self.data_dir = Path.home() / ".dlp-agent"
+        self.data_dir.mkdir(parents=True, exist_ok=True)
+        self.local_log_path = self.data_dir / "events.jsonl"
+        self.pending_path = self.data_dir / "pending_events.jsonl"
+
         # Buffer para envío en lotes (tiempo real = valores bajos)
         self._send_buffer: List[DLPEvent] = []
         self._buffer_size = 1          # Enviar inmediatamente cada evento
         self._last_flush = time.time()
         self._flush_interval = 1.0     # Flush cada 1 segundo máximo
+
+        # Estado de conexión
+        self._is_connected = False
+        self._last_connection_check = 0
+        self._connection_check_interval = 30  # Verificar cada 30 segundos
     
     def start(self):
         self.running = True
         self._thread = threading.Thread(target=self._sender_loop, daemon=True)
         self._thread.start()
         self.logger.info("EventReporter iniciado")
-    
+        # Intentar enviar eventos pendientes al iniciar
+        self._send_pending_events()
+
     def stop(self):
         self.running = False
         self._flush_buffer()  # Enviar eventos pendientes
@@ -469,29 +478,93 @@ class EventReporter:
         """Envía todos los eventos del buffer"""
         if not self._send_buffer:
             return
-        
+
         events_to_send = self._send_buffer.copy()
         self._send_buffer.clear()
         self._last_flush = time.time()
-        
+
         try:
             with socket.socket(socket.AF_INET, socket.SOCK_STREAM) as sock:
                 sock.settimeout(5)
                 sock.connect((self.host, self.port))
-                
+
                 # Enviar todos los eventos en una conexión
                 data = "\n".join(e.to_json() for e in events_to_send) + "\n"
                 sock.sendall(data.encode())
-                
+
                 self.resource_manager.events_sent += len(events_to_send)
                 self.logger.debug(f"Enviados {len(events_to_send)} eventos")
-                
-        except ConnectionRefusedError:
-            self.logger.debug("Consola no disponible, eventos guardados localmente")
+
+                # Conexión exitosa - enviar pendientes si hay
+                if not self._is_connected:
+                    self._is_connected = True
+                    self.logger.info("Conexión con consola establecida")
+                    self._send_pending_events()
+
+        except (ConnectionRefusedError, socket.timeout, OSError) as e:
+            # Sin conexión - guardar en archivo de pendientes
+            if self._is_connected:
+                self._is_connected = False
+                self.logger.warning("Conexión con consola perdida - guardando eventos localmente")
+
+            self._save_pending_events(events_to_send)
             self.resource_manager.events_failed += len(events_to_send)
         except Exception as e:
             self.logger.error(f"Error enviando eventos: {e}")
+            self._save_pending_events(events_to_send)
             self.resource_manager.events_failed += len(events_to_send)
+
+    def _save_pending_events(self, events: List[DLPEvent]):
+        """Guarda eventos en archivo de pendientes para enviar después"""
+        try:
+            with open(self.pending_path, "a") as f:
+                for event in events:
+                    f.write(event.to_json() + "\n")
+        except Exception as e:
+            self.logger.error(f"Error guardando eventos pendientes: {e}")
+
+    def _send_pending_events(self):
+        """Envía eventos pendientes guardados durante desconexión"""
+        if not self.pending_path.exists():
+            return
+
+        try:
+            # Leer eventos pendientes
+            with open(self.pending_path, "r") as f:
+                lines = f.readlines()
+
+            if not lines:
+                return
+
+            self.logger.info(f"Enviando {len(lines)} eventos pendientes...")
+
+            # Enviar en lotes de 50
+            batch_size = 50
+            sent_count = 0
+
+            for i in range(0, len(lines), batch_size):
+                batch = lines[i:i + batch_size]
+                try:
+                    with socket.socket(socket.AF_INET, socket.SOCK_STREAM) as sock:
+                        sock.settimeout(10)
+                        sock.connect((self.host, self.port))
+                        data = "".join(batch)
+                        sock.sendall(data.encode())
+                        sent_count += len(batch)
+                except Exception as e:
+                    self.logger.error(f"Error enviando lote de pendientes: {e}")
+                    # Guardar los no enviados de vuelta
+                    remaining = lines[i:]
+                    with open(self.pending_path, "w") as f:
+                        f.writelines(remaining)
+                    return
+
+            # Todos enviados - eliminar archivo de pendientes
+            self.pending_path.unlink()
+            self.logger.info(f"Enviados {sent_count} eventos pendientes exitosamente")
+
+        except Exception as e:
+            self.logger.error(f"Error procesando eventos pendientes: {e}")
     
     @property
     def queue_size(self) -> int:
