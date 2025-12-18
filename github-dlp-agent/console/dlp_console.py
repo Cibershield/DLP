@@ -1354,28 +1354,9 @@ DASHBOARD_HTML = """
                     return;
                 }
 
-                reposGrid.innerHTML = data.repositories.map(repo => {
-                    // Colaboradores
-                    let collabHtml = '';
-                    if (repo.collaborators && repo.collaborators.length > 0) {
-                        collabHtml = `
-                            <div class="collab-section">
-                                <h4>👥 Colaboradores (${repo.collaborators.length})</h4>
-                                <div class="collab-list">
-                                    ${repo.collaborators.map(c => `
-                                        <div class="collab-item">
-                                            <img src="${c.avatar}" alt="${c.username}">
-                                            <span>${c.username}</span>
-                                            <span class="collab-role ${c.role.toLowerCase()}">${c.role}</span>
-                                        </div>
-                                    `).join('')}
-                                </div>
-                            </div>
-                        `;
-                    }
-
+                reposGrid.innerHTML = data.repositories.map((repo, index) => {
                     return `
-                        <div class="repo-card ${repo.private ? '' : 'public'}">
+                        <div class="repo-card ${repo.private ? '' : 'public'}" id="repo-card-${index}">
                             <div class="repo-card-header">
                                 <h3><a href="${repo.url}" target="_blank">${repo.name}</a></h3>
                                 <span class="${repo.private ? 'alert-tag' : 'user-tag'}">${repo.private ? '🔒 Privado' : '🌐 Público'}</span>
@@ -1385,11 +1366,16 @@ DASHBOARD_HTML = """
                                 <span>📅 Creado: ${formatDateTime(repo.created_at)}</span>
                                 <span>🔄 Último push: ${formatDateTime(repo.pushed_at)}</span>
                             </div>
-                            <div style="font-size: 0.8rem; color: #888;">
+                            <div style="font-size: 0.8rem; color: #888; margin-bottom: 10px;">
                                 <span>🌿 Branch: ${repo.default_branch}</span>
                                 ${repo.archived ? '<span style="color: #ff4757; margin-left: 10px;">📦 Archivado</span>' : ''}
                             </div>
-                            ${collabHtml}
+                            <div class="collab-section" id="collabs-${index}">
+                                <button onclick="loadCollaborators('${orgName}', '${repo.name}', ${index})"
+                                        style="padding: 6px 12px; background: #16213e; color: #00d4ff; border: 1px solid #00d4ff; border-radius: 4px; cursor: pointer; font-size: 0.8rem;">
+                                    👥 Ver Colaboradores
+                                </button>
+                            </div>
                         </div>
                     `;
                 }).join('');
@@ -1409,6 +1395,41 @@ DASHBOARD_HTML = """
                 });
             }
         });
+
+        async function loadCollaborators(org, repoName, index) {
+            const container = document.getElementById('collabs-' + index);
+            container.innerHTML = '<span style="color: #00d4ff; font-size: 0.8rem;">⏳ Cargando...</span>';
+
+            try {
+                const response = await fetch('/api/github/org/' + encodeURIComponent(org) + '/repo/' + encodeURIComponent(repoName) + '/collaborators');
+                const data = await response.json();
+
+                if (data.error) {
+                    container.innerHTML = '<span style="color: #ff4757; font-size: 0.8rem;">Error: ' + data.error + '</span>';
+                    return;
+                }
+
+                if (!data.collaborators || data.collaborators.length === 0) {
+                    container.innerHTML = '<span style="color: #888; font-size: 0.8rem;">Sin colaboradores directos</span>';
+                    return;
+                }
+
+                container.innerHTML = `
+                    <h4 style="color: #888; font-size: 0.8rem; margin-bottom: 8px;">👥 Colaboradores (${data.collaborators.length})</h4>
+                    <div class="collab-list">
+                        ${data.collaborators.map(c => `
+                            <div class="collab-item">
+                                <img src="${c.avatar}" alt="${c.username}">
+                                <span>${c.username}</span>
+                                <span class="collab-role ${c.role.toLowerCase()}">${c.role}</span>
+                            </div>
+                        `).join('')}
+                    </div>
+                `;
+            } catch (error) {
+                container.innerHTML = '<span style="color: #ff4757; font-size: 0.8rem;">Error: ' + error.message + '</span>';
+            }
+        }
     </script>
 </body>
 </html>
@@ -1683,9 +1704,8 @@ def api_github_org(org):
     repos = github_api.get_org_repos(org)
     members = github_api.get_org_members(org)
 
-    # Para cada repo, obtener colaboradores
-    for repo in repos:
-        repo['collaborators'] = github_api.get_repo_collaborators(org, repo['name'])
+    # NO cargar colaboradores automáticamente (muy lento para muchos repos)
+    # Los colaboradores se cargan bajo demanda con /api/github/repo/<owner>/<repo>
 
     return jsonify({
         "organization": org_info,
@@ -1693,6 +1713,16 @@ def api_github_org(org):
         "members": members,
         "total_repos": len(repos)
     })
+
+
+@app.route('/api/github/org/<org>/repo/<repo>/collaborators')
+def api_github_repo_collaborators(org, repo):
+    """API endpoint para colaboradores de un repo específico"""
+    if not github_api or not github_api.is_configured():
+        return jsonify({"error": "GitHub API not configured"})
+
+    collaborators = github_api.get_repo_collaborators(org, repo)
+    return jsonify({"collaborators": collaborators})
 
 
 def main():
