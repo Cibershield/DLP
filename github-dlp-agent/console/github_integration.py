@@ -137,6 +137,68 @@ class GitHubIntegration:
             "views": views if views and "error" not in views else {"count": 0, "uniques": 0}
         }
 
+    def get_org_repos(self, org: str) -> List[Dict]:
+        """
+        Obtiene todos los repositorios de una organización.
+        """
+        repos = []
+        page = 1
+        while True:
+            data = self._make_request(f"/orgs/{org}/repos?per_page=100&page={page}")
+            if not data or isinstance(data, dict) and "error" in data:
+                break
+            if not data:
+                break
+            for repo in data:
+                repos.append({
+                    "name": repo.get("name"),
+                    "full_name": repo.get("full_name"),
+                    "private": repo.get("private"),
+                    "url": repo.get("html_url"),
+                    "description": repo.get("description"),
+                    "created_at": repo.get("created_at"),
+                    "updated_at": repo.get("updated_at"),
+                    "pushed_at": repo.get("pushed_at"),
+                    "default_branch": repo.get("default_branch"),
+                    "visibility": repo.get("visibility"),
+                    "archived": repo.get("archived"),
+                })
+            if len(data) < 100:
+                break
+            page += 1
+        return repos
+
+    def get_org_members(self, org: str) -> List[Dict]:
+        """
+        Obtiene los miembros de una organización.
+        """
+        data = self._make_request(f"/orgs/{org}/members")
+        if isinstance(data, list):
+            return [{
+                "username": m.get("login"),
+                "avatar": m.get("avatar_url"),
+                "role": "member"
+            } for m in data]
+        return []
+
+    def get_org_info(self, org: str) -> Optional[Dict]:
+        """
+        Obtiene información de la organización.
+        """
+        data = self._make_request(f"/orgs/{org}")
+        if data and "error" not in data:
+            return {
+                "name": data.get("name"),
+                "login": data.get("login"),
+                "description": data.get("description"),
+                "public_repos": data.get("public_repos"),
+                "total_private_repos": data.get("total_private_repos"),
+                "plan": data.get("plan", {}).get("name"),
+                "members_count": data.get("members_count", 0),
+                "avatar": data.get("avatar_url"),
+            }
+        return None
+
 
 class RepositoryTracker:
     """Rastrea actividad de repositorios desde los eventos DLP"""

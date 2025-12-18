@@ -782,7 +782,8 @@ DASHBOARD_HTML = """
     <!-- Navigation Tabs -->
     <div class="nav-tabs">
         <button class="nav-tab active" onclick="switchTab('events')">📋 Eventos</button>
-        <button class="nav-tab" onclick="switchTab('repositories')">📦 Repositorios</button>
+        <button class="nav-tab" onclick="switchTab('repositories')">📦 Repositorios DLP</button>
+        <button class="nav-tab" onclick="switchTab('organization')">🏢 Organización GitHub</button>
         <button class="nav-tab" onclick="switchTab('agents')">🖥️ Agentes DLP</button>
         <button class="nav-tab" onclick="switchTab('unauthorized')">🚨 Accesos No Autorizados <span id="unauthorized-badge" class="count-badge" style="display:none;">0</span></button>
     </div>
@@ -838,6 +839,25 @@ DASHBOARD_HTML = """
     </div>
     </div>
 
+    <!-- Tab: Organization -->
+    <div id="tab-organization" class="tab-content">
+    <div class="main-content">
+        <div class="section-header">
+            <h2>🏢 Organización GitHub</h2>
+        </div>
+        <div style="margin-bottom: 20px;">
+            <input type="text" id="org-name-input" placeholder="Nombre de la organización (ej: Delfix-CR)"
+                   style="padding: 10px 15px; border: 1px solid #333; background: #1a1a2e; color: #e0e0e0; border-radius: 6px; width: 300px; margin-right: 10px;">
+            <button onclick="fetchOrganization()" style="padding: 10px 20px; background: #00d4ff; color: #000; border: none; border-radius: 6px; cursor: pointer; font-weight: 600;">Cargar Organización</button>
+        </div>
+        <div id="org-info" style="display: none; background: #1a1a2e; padding: 20px; border-radius: 10px; margin-bottom: 20px;">
+        </div>
+        <div id="org-repos-grid" class="repo-grid">
+            <p style="color: #666; grid-column: 1/-1; text-align: center; padding: 40px;">Ingrese el nombre de una organización para ver sus repositorios.</p>
+        </div>
+    </div>
+    </div>
+
     <!-- Tab: Agents -->
     <div id="tab-agents" class="tab-content">
     <div class="main-content">
@@ -888,6 +908,7 @@ DASHBOARD_HTML = """
             if (tabName === 'repositories') fetchRepositories();
             if (tabName === 'agents') fetchDLPAgents();
             if (tabName === 'unauthorized') fetchUnauthorized();
+            // organization se carga manualmente con el botón
         }
         
         function formatTime(isoString) {
@@ -1286,6 +1307,108 @@ DASHBOARD_HTML = """
                 minute: '2-digit'
             });
         }
+
+        async function fetchOrganization() {
+            const orgName = document.getElementById('org-name-input').value.trim();
+            if (!orgName) {
+                alert('Ingrese el nombre de la organización');
+                return;
+            }
+
+            const infoDiv = document.getElementById('org-info');
+            const reposGrid = document.getElementById('org-repos-grid');
+
+            reposGrid.innerHTML = '<p style="color: #00d4ff; grid-column: 1/-1; text-align: center; padding: 40px;">⏳ Cargando organización ' + orgName + '...</p>';
+
+            try {
+                const response = await fetch('/api/github/org/' + encodeURIComponent(orgName));
+                const data = await response.json();
+
+                if (data.error) {
+                    infoDiv.style.display = 'none';
+                    reposGrid.innerHTML = '<p style="color: #ff4757; grid-column: 1/-1; text-align: center; padding: 40px;">Error: ' + data.error + '</p>';
+                    return;
+                }
+
+                // Mostrar info de la organización
+                const org = data.organization;
+                infoDiv.style.display = 'block';
+                infoDiv.innerHTML = `
+                    <div style="display: flex; align-items: center; gap: 20px;">
+                        <img src="${org.avatar}" style="width: 60px; height: 60px; border-radius: 10px;">
+                        <div>
+                            <h3 style="color: #00d4ff; margin: 0;">${org.name || org.login}</h3>
+                            <p style="color: #888; margin: 5px 0;">${org.description || ''}</p>
+                            <div style="display: flex; gap: 20px; margin-top: 10px;">
+                                <span style="color: #00ff88;">📦 ${data.total_repos} repositorios</span>
+                                <span style="color: #ffa502;">👥 ${data.members.length} miembros</span>
+                                <span style="color: #a29bfe;">📋 Plan: ${org.plan || 'N/A'}</span>
+                            </div>
+                        </div>
+                    </div>
+                `;
+
+                // Mostrar repositorios
+                if (data.repositories.length === 0) {
+                    reposGrid.innerHTML = '<p style="color: #666; grid-column: 1/-1; text-align: center; padding: 40px;">No hay repositorios en esta organización.</p>';
+                    return;
+                }
+
+                reposGrid.innerHTML = data.repositories.map(repo => {
+                    // Colaboradores
+                    let collabHtml = '';
+                    if (repo.collaborators && repo.collaborators.length > 0) {
+                        collabHtml = `
+                            <div class="collab-section">
+                                <h4>👥 Colaboradores (${repo.collaborators.length})</h4>
+                                <div class="collab-list">
+                                    ${repo.collaborators.map(c => `
+                                        <div class="collab-item">
+                                            <img src="${c.avatar}" alt="${c.username}">
+                                            <span>${c.username}</span>
+                                            <span class="collab-role ${c.role.toLowerCase()}">${c.role}</span>
+                                        </div>
+                                    `).join('')}
+                                </div>
+                            </div>
+                        `;
+                    }
+
+                    return `
+                        <div class="repo-card ${repo.private ? '' : 'public'}">
+                            <div class="repo-card-header">
+                                <h3><a href="${repo.url}" target="_blank">${repo.name}</a></h3>
+                                <span class="${repo.private ? 'alert-tag' : 'user-tag'}">${repo.private ? '🔒 Privado' : '🌐 Público'}</span>
+                            </div>
+                            <p style="color: #888; font-size: 0.85rem; margin: 10px 0;">${repo.description || 'Sin descripción'}</p>
+                            <div style="display: flex; gap: 15px; font-size: 0.8rem; color: #666; margin-bottom: 10px;">
+                                <span>📅 Creado: ${formatDateTime(repo.created_at)}</span>
+                                <span>🔄 Último push: ${formatDateTime(repo.pushed_at)}</span>
+                            </div>
+                            <div style="font-size: 0.8rem; color: #888;">
+                                <span>🌿 Branch: ${repo.default_branch}</span>
+                                ${repo.archived ? '<span style="color: #ff4757; margin-left: 10px;">📦 Archivado</span>' : ''}
+                            </div>
+                            ${collabHtml}
+                        </div>
+                    `;
+                }).join('');
+
+            } catch (error) {
+                console.error('Error fetching organization:', error);
+                reposGrid.innerHTML = '<p style="color: #ff4757; grid-column: 1/-1; text-align: center; padding: 40px;">Error de conexión: ' + error.message + '</p>';
+            }
+        }
+
+        // Permitir Enter en el input
+        document.addEventListener('DOMContentLoaded', function() {
+            const input = document.getElementById('org-name-input');
+            if (input) {
+                input.addEventListener('keypress', function(e) {
+                    if (e.key === 'Enter') fetchOrganization();
+                });
+            }
+        });
     </script>
 </body>
 </html>
@@ -1544,6 +1667,31 @@ def api_github_repo(owner, repo):
         "info": info,
         "collaborators": collaborators,
         "traffic": traffic
+    })
+
+
+@app.route('/api/github/org/<org>')
+def api_github_org(org):
+    """API endpoint para información de organización GitHub"""
+    if not github_api or not github_api.is_configured():
+        return jsonify({"error": "GitHub API not configured. Set GITHUB_TOKEN environment variable."})
+
+    org_info = github_api.get_org_info(org)
+    if not org_info:
+        return jsonify({"error": f"Organization '{org}' not found or no access"})
+
+    repos = github_api.get_org_repos(org)
+    members = github_api.get_org_members(org)
+
+    # Para cada repo, obtener colaboradores
+    for repo in repos:
+        repo['collaborators'] = github_api.get_repo_collaborators(org, repo['name'])
+
+    return jsonify({
+        "organization": org_info,
+        "repositories": repos,
+        "members": members,
+        "total_repos": len(repos)
     })
 
 
