@@ -24,6 +24,7 @@ RUN pip install --no-cache-dir -r requirements-console.txt
 
 # Copiar código de la consola
 COPY dlp_console.py .
+COPY github_integration.py .
 
 # Crear directorio para datos
 RUN mkdir -p /app/data
