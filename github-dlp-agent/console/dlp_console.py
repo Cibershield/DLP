@@ -852,6 +852,13 @@ DASHBOARD_HTML = """
         </div>
         <div id="org-info" style="display: none; background: #1a1a2e; padding: 20px; border-radius: 10px; margin-bottom: 20px;">
         </div>
+        <!-- Búsqueda de repos -->
+        <div id="repo-search-container" style="display: none; margin-bottom: 20px;">
+            <input type="text" id="repo-search-input" placeholder="🔍 Buscar repositorio..."
+                   onkeyup="filterRepos()"
+                   style="padding: 10px 15px; border: 1px solid #333; background: #1a1a2e; color: #e0e0e0; border-radius: 6px; width: 100%; max-width: 400px;">
+            <span id="repo-count" style="margin-left: 15px; color: #888;"></span>
+        </div>
         <div id="org-repos-grid" class="repo-grid">
             <p style="color: #666; grid-column: 1/-1; text-align: center; padding: 40px;">Ingrese el nombre de una organización para ver sus repositorios.</p>
         </div>
@@ -896,6 +903,8 @@ DASHBOARD_HTML = """
         let dlpAgentsData = {};
         let unauthorizedData = [];
         let currentTab = 'events';
+        let orgReposData = [];
+        let currentOrgName = '';
 
         function switchTab(tabName) {
             currentTab = tabName;
@@ -1315,9 +1324,12 @@ DASHBOARD_HTML = """
                 return;
             }
 
+            currentOrgName = orgName;
             const infoDiv = document.getElementById('org-info');
             const reposGrid = document.getElementById('org-repos-grid');
+            const searchContainer = document.getElementById('repo-search-container');
 
+            searchContainer.style.display = 'none';
             reposGrid.innerHTML = '<p style="color: #00d4ff; grid-column: 1/-1; text-align: center; padding: 40px;">⏳ Cargando organización ' + orgName + '...</p>';
 
             try {
@@ -1348,42 +1360,67 @@ DASHBOARD_HTML = """
                     </div>
                 `;
 
+                // Guardar repos para filtrar
+                orgReposData = data.repositories;
+                searchContainer.style.display = 'block';
+                document.getElementById('repo-count').textContent = orgReposData.length + ' repositorios';
+
                 // Mostrar repositorios
                 if (data.repositories.length === 0) {
                     reposGrid.innerHTML = '<p style="color: #666; grid-column: 1/-1; text-align: center; padding: 40px;">No hay repositorios en esta organización.</p>';
                     return;
                 }
 
-                reposGrid.innerHTML = data.repositories.map((repo, index) => {
-                    return `
-                        <div class="repo-card ${repo.private ? '' : 'public'}" id="repo-card-${index}">
-                            <div class="repo-card-header">
-                                <h3><a href="${repo.url}" target="_blank">${repo.name}</a></h3>
-                                <span class="${repo.private ? 'alert-tag' : 'user-tag'}">${repo.private ? '🔒 Privado' : '🌐 Público'}</span>
-                            </div>
-                            <p style="color: #888; font-size: 0.85rem; margin: 10px 0;">${repo.description || 'Sin descripción'}</p>
-                            <div style="display: flex; gap: 15px; font-size: 0.8rem; color: #666; margin-bottom: 10px;">
-                                <span>📅 Creado: ${formatDateTime(repo.created_at)}</span>
-                                <span>🔄 Último push: ${formatDateTime(repo.pushed_at)}</span>
-                            </div>
-                            <div style="font-size: 0.8rem; color: #888; margin-bottom: 10px;">
-                                <span>🌿 Branch: ${repo.default_branch}</span>
-                                ${repo.archived ? '<span style="color: #ff4757; margin-left: 10px;">📦 Archivado</span>' : ''}
-                            </div>
-                            <div class="collab-section" id="collabs-${index}">
-                                <button onclick="loadCollaborators('${orgName}', '${repo.name}', ${index})"
-                                        style="padding: 6px 12px; background: #16213e; color: #00d4ff; border: 1px solid #00d4ff; border-radius: 4px; cursor: pointer; font-size: 0.8rem;">
-                                    👥 Ver Colaboradores
-                                </button>
-                            </div>
-                        </div>
-                    `;
-                }).join('');
-
+                renderOrgRepos(orgReposData);
             } catch (error) {
                 console.error('Error fetching organization:', error);
                 reposGrid.innerHTML = '<p style="color: #ff4757; grid-column: 1/-1; text-align: center; padding: 40px;">Error de conexión: ' + error.message + '</p>';
             }
+        }
+
+        function filterRepos() {
+            const searchTerm = document.getElementById('repo-search-input').value.toLowerCase();
+            const filtered = orgReposData.filter(repo =>
+                repo.name.toLowerCase().includes(searchTerm) ||
+                (repo.description && repo.description.toLowerCase().includes(searchTerm))
+            );
+            document.getElementById('repo-count').textContent = filtered.length + ' de ' + orgReposData.length + ' repositorios';
+            renderOrgRepos(filtered);
+        }
+
+        function renderOrgRepos(repos) {
+            const reposGrid = document.getElementById('org-repos-grid');
+
+            if (repos.length === 0) {
+                reposGrid.innerHTML = '<p style="color: #666; grid-column: 1/-1; text-align: center; padding: 40px;">No se encontraron repositorios.</p>';
+                return;
+            }
+
+            reposGrid.innerHTML = repos.map((repo, index) => {
+                return `
+                    <div class="repo-card ${repo.private ? '' : 'public'}" id="repo-card-${repo.name}">
+                        <div class="repo-card-header">
+                            <h3><a href="${repo.url}" target="_blank">${repo.name}</a></h3>
+                            <span class="${repo.private ? 'alert-tag' : 'user-tag'}">${repo.private ? '🔒 Privado' : '🌐 Público'}</span>
+                        </div>
+                        <p style="color: #888; font-size: 0.85rem; margin: 10px 0;">${repo.description || 'Sin descripción'}</p>
+                        <div style="display: flex; gap: 15px; font-size: 0.8rem; color: #666; margin-bottom: 10px;">
+                            <span>📅 Creado: ${formatDateTime(repo.created_at)}</span>
+                            <span>🔄 Último push: ${formatDateTime(repo.pushed_at)}</span>
+                        </div>
+                        <div style="font-size: 0.8rem; color: #888; margin-bottom: 10px;">
+                            <span>🌿 Branch: ${repo.default_branch}</span>
+                            ${repo.archived ? '<span style="color: #ff4757; margin-left: 10px;">📦 Archivado</span>' : ''}
+                        </div>
+                        <div class="collab-section" id="collabs-${repo.name}">
+                            <button onclick="loadCollaborators('${currentOrgName}', '${repo.name}')"
+                                    style="padding: 6px 12px; background: #16213e; color: #00d4ff; border: 1px solid #00d4ff; border-radius: 4px; cursor: pointer; font-size: 0.8rem;">
+                                👥 Ver/Gestionar Colaboradores
+                            </button>
+                        </div>
+                    </div>
+                `;
+            }).join('');
         }
 
         // Permitir Enter en el input
@@ -1396,8 +1433,8 @@ DASHBOARD_HTML = """
             }
         });
 
-        async function loadCollaborators(org, repoName, index) {
-            const container = document.getElementById('collabs-' + index);
+        async function loadCollaborators(org, repoName) {
+            const container = document.getElementById('collabs-' + repoName);
             container.innerHTML = '<span style="color: #00d4ff; font-size: 0.8rem;">⏳ Cargando...</span>';
 
             try {
@@ -1409,25 +1446,130 @@ DASHBOARD_HTML = """
                     return;
                 }
 
-                if (!data.collaborators || data.collaborators.length === 0) {
-                    container.innerHTML = '<span style="color: #888; font-size: 0.8rem;">Sin colaboradores directos</span>';
-                    return;
+                let collabsHtml = '';
+                if (data.collaborators && data.collaborators.length > 0) {
+                    collabsHtml = data.collaborators.map(c => `
+                        <div class="collab-item" style="display: flex; align-items: center; gap: 8px; margin-bottom: 8px; padding: 8px; background: #16213e; border-radius: 6px;">
+                            <img src="${c.avatar}" alt="${c.username}" style="width: 24px; height: 24px; border-radius: 50%;">
+                            <span style="flex: 1;">${c.username}</span>
+                            <select onchange="updatePermission('${org}', '${repoName}', '${c.username}', this.value)"
+                                    style="padding: 4px 8px; background: #1a1a2e; color: #e0e0e0; border: 1px solid #333; border-radius: 4px; font-size: 0.75rem;">
+                                <option value="pull" ${c.role === 'Read' ? 'selected' : ''}>Read</option>
+                                <option value="triage" ${c.role === 'Triage' ? 'selected' : ''}>Triage</option>
+                                <option value="push" ${c.role === 'Write' ? 'selected' : ''}>Write</option>
+                                <option value="maintain" ${c.role === 'Maintainer' ? 'selected' : ''}>Maintain</option>
+                                <option value="admin" ${c.role === 'Admin' ? 'selected' : ''}>Admin</option>
+                            </select>
+                            <button onclick="removeCollaborator('${org}', '${repoName}', '${c.username}')"
+                                    style="padding: 4px 8px; background: #ff4757; color: white; border: none; border-radius: 4px; cursor: pointer; font-size: 0.75rem;"
+                                    title="Eliminar colaborador">✕</button>
+                        </div>
+                    `).join('');
+                } else {
+                    collabsHtml = '<p style="color: #888; font-size: 0.8rem;">Sin colaboradores directos</p>';
                 }
 
                 container.innerHTML = `
-                    <h4 style="color: #888; font-size: 0.8rem; margin-bottom: 8px;">👥 Colaboradores (${data.collaborators.length})</h4>
-                    <div class="collab-list">
-                        ${data.collaborators.map(c => `
-                            <div class="collab-item">
-                                <img src="${c.avatar}" alt="${c.username}">
-                                <span>${c.username}</span>
-                                <span class="collab-role ${c.role.toLowerCase()}">${c.role}</span>
-                            </div>
-                        `).join('')}
+                    <h4 style="color: #888; font-size: 0.8rem; margin-bottom: 10px;">👥 Colaboradores (${data.collaborators ? data.collaborators.length : 0})</h4>
+                    ${collabsHtml}
+                    <div style="margin-top: 12px; padding-top: 12px; border-top: 1px solid #333;">
+                        <h5 style="color: #888; font-size: 0.75rem; margin-bottom: 8px;">➕ Agregar colaborador:</h5>
+                        <div style="display: flex; gap: 8px; flex-wrap: wrap;">
+                            <input type="text" id="new-collab-${repoName}" placeholder="Usuario GitHub"
+                                   style="padding: 6px 10px; background: #1a1a2e; color: #e0e0e0; border: 1px solid #333; border-radius: 4px; font-size: 0.8rem; width: 150px;">
+                            <select id="new-collab-perm-${repoName}"
+                                    style="padding: 6px 10px; background: #1a1a2e; color: #e0e0e0; border: 1px solid #333; border-radius: 4px; font-size: 0.8rem;">
+                                <option value="pull">Read</option>
+                                <option value="triage">Triage</option>
+                                <option value="push" selected>Write</option>
+                                <option value="maintain">Maintain</option>
+                                <option value="admin">Admin</option>
+                            </select>
+                            <button onclick="addCollaborator('${org}', '${repoName}')"
+                                    style="padding: 6px 12px; background: #00ff88; color: #000; border: none; border-radius: 4px; cursor: pointer; font-size: 0.8rem; font-weight: 600;">
+                                Agregar
+                            </button>
+                        </div>
                     </div>
                 `;
             } catch (error) {
                 container.innerHTML = '<span style="color: #ff4757; font-size: 0.8rem;">Error: ' + error.message + '</span>';
+            }
+        }
+
+        async function addCollaborator(org, repoName) {
+            const username = document.getElementById('new-collab-' + repoName).value.trim();
+            const permission = document.getElementById('new-collab-perm-' + repoName).value;
+
+            if (!username) {
+                alert('Ingrese el nombre de usuario de GitHub');
+                return;
+            }
+
+            try {
+                const response = await fetch('/api/github/org/' + encodeURIComponent(org) + '/repo/' + encodeURIComponent(repoName) + '/collaborators/' + encodeURIComponent(username), {
+                    method: 'PUT',
+                    headers: {'Content-Type': 'application/json'},
+                    body: JSON.stringify({permission: permission})
+                });
+                const data = await response.json();
+
+                if (data.error) {
+                    alert('Error: ' + data.error);
+                } else {
+                    alert('Colaborador agregado exitosamente. Se enviará una invitación.');
+                    loadCollaborators(org, repoName);
+                }
+            } catch (error) {
+                alert('Error: ' + error.message);
+            }
+        }
+
+        async function removeCollaborator(org, repoName, username) {
+            if (!confirm('¿Eliminar a ' + username + ' como colaborador de ' + repoName + '?')) {
+                return;
+            }
+
+            try {
+                const response = await fetch('/api/github/org/' + encodeURIComponent(org) + '/repo/' + encodeURIComponent(repoName) + '/collaborators/' + encodeURIComponent(username), {
+                    method: 'DELETE'
+                });
+                const data = await response.json();
+
+                if (data.error) {
+                    alert('Error: ' + data.error);
+                } else {
+                    alert('Colaborador eliminado');
+                    loadCollaborators(org, repoName);
+                }
+            } catch (error) {
+                alert('Error: ' + error.message);
+            }
+        }
+
+        async function updatePermission(org, repoName, username, permission) {
+            try {
+                const response = await fetch('/api/github/org/' + encodeURIComponent(org) + '/repo/' + encodeURIComponent(repoName) + '/collaborators/' + encodeURIComponent(username), {
+                    method: 'PUT',
+                    headers: {'Content-Type': 'application/json'},
+                    body: JSON.stringify({permission: permission})
+                });
+                const data = await response.json();
+
+                if (data.error) {
+                    alert('Error: ' + data.error);
+                    loadCollaborators(org, repoName); // Recargar para mostrar estado correcto
+                } else {
+                    // Mostrar confirmación sutil
+                    const container = document.getElementById('collabs-' + repoName);
+                    const msg = document.createElement('span');
+                    msg.style.cssText = 'color: #00ff88; font-size: 0.75rem; margin-left: 10px;';
+                    msg.textContent = '✓ Permiso actualizado';
+                    container.querySelector('h4').appendChild(msg);
+                    setTimeout(() => msg.remove(), 2000);
+                }
+            } catch (error) {
+                alert('Error: ' + error.message);
             }
         }
     </script>
@@ -1723,6 +1865,47 @@ def api_github_repo_collaborators(org, repo):
 
     collaborators = github_api.get_repo_collaborators(org, repo)
     return jsonify({"collaborators": collaborators})
+
+
+@app.route('/api/github/org/<org>/repo/<repo>/collaborators/<username>', methods=['PUT'])
+def api_add_collaborator(org, repo, username):
+    """API endpoint para agregar colaborador"""
+    if not github_api or not github_api.is_configured():
+        return jsonify({"error": "GitHub API not configured"})
+
+    from flask import request
+    data = request.get_json() or {}
+    permission = data.get('permission', 'push')
+
+    result = github_api.add_collaborator(org, repo, username, permission)
+    return jsonify(result)
+
+
+@app.route('/api/github/org/<org>/repo/<repo>/collaborators/<username>', methods=['DELETE'])
+def api_remove_collaborator(org, repo, username):
+    """API endpoint para eliminar colaborador"""
+    if not github_api or not github_api.is_configured():
+        return jsonify({"error": "GitHub API not configured"})
+
+    result = github_api.remove_collaborator(org, repo, username)
+    return jsonify(result)
+
+
+@app.route('/api/github/org/<org>/repo/<repo>/collaborators/<username>/permission', methods=['PUT'])
+def api_update_collaborator_permission(org, repo, username):
+    """API endpoint para actualizar permiso de colaborador"""
+    if not github_api or not github_api.is_configured():
+        return jsonify({"error": "GitHub API not configured"})
+
+    from flask import request
+    data = request.get_json() or {}
+    permission = data.get('permission')
+
+    if not permission:
+        return jsonify({"error": "Se requiere el campo 'permission'"})
+
+    result = github_api.update_collaborator_permission(org, repo, username, permission)
+    return jsonify(result)
 
 
 def main():

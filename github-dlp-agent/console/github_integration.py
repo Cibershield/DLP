@@ -42,19 +42,24 @@ class GitHubIntegration:
         """Verifica si hay un token configurado"""
         return bool(self.token)
 
-    def _make_request(self, endpoint: str, method: str = "GET") -> Optional[Dict]:
+    def _make_request(self, endpoint: str, method: str = "GET", json_data: Dict = None) -> Optional[Dict]:
         """Realiza una petición a la API de GitHub"""
         try:
             url = f"{self.base_url}{endpoint}"
-            response = requests.request(method, url, headers=self.headers, timeout=10)
+            response = requests.request(method, url, headers=self.headers, json=json_data, timeout=10)
 
-            if response.status_code == 200:
-                return response.json()
+            if response.status_code in [200, 201]:
+                if response.text:
+                    return response.json()
+                return {"success": True}
+            elif response.status_code == 204:
+                return {"success": True, "message": "Operación exitosa"}
             elif response.status_code == 404:
-                return None
+                return {"error": "No encontrado"}
             elif response.status_code == 403:
-                # Rate limit o sin permisos
-                return {"error": "Rate limit excedido o sin permisos"}
+                return {"error": "Sin permisos o rate limit excedido"}
+            elif response.status_code == 422:
+                return {"error": "Datos inválidos"}
             else:
                 return {"error": f"HTTP {response.status_code}"}
         except Exception as e:
@@ -137,6 +142,58 @@ class GitHubIntegration:
             "clones": clones if clones and "error" not in clones else {"count": 0, "uniques": 0},
             "views": views if views and "error" not in views else {"count": 0, "uniques": 0}
         }
+
+    def add_collaborator(self, owner: str, repo: str, username: str, permission: str = "push") -> Dict:
+        """
+        Agrega un colaborador a un repositorio.
+
+        Args:
+            owner: Dueño del repo (usuario u organización)
+            repo: Nombre del repositorio
+            username: Usuario a agregar
+            permission: pull (read), push (write), admin, maintain, triage
+
+        Returns:
+            Dict con resultado de la operación
+        """
+        valid_permissions = ["pull", "push", "admin", "maintain", "triage"]
+        if permission not in valid_permissions:
+            return {"error": f"Permiso inválido. Usar: {', '.join(valid_permissions)}"}
+
+        result = self._make_request(
+            f"/repos/{owner}/{repo}/collaborators/{username}",
+            method="PUT",
+            json_data={"permission": permission}
+        )
+
+        # Limpiar caché de colaboradores
+        cache_key = f"repo:{owner}/{repo}"
+        if cache_key in self._cache:
+            del self._cache[cache_key]
+
+        return result if result else {"error": "Error al agregar colaborador"}
+
+    def remove_collaborator(self, owner: str, repo: str, username: str) -> Dict:
+        """
+        Elimina un colaborador de un repositorio.
+        """
+        result = self._make_request(
+            f"/repos/{owner}/{repo}/collaborators/{username}",
+            method="DELETE"
+        )
+
+        # Limpiar caché
+        cache_key = f"repo:{owner}/{repo}"
+        if cache_key in self._cache:
+            del self._cache[cache_key]
+
+        return result if result else {"error": "Error al eliminar colaborador"}
+
+    def update_collaborator_permission(self, owner: str, repo: str, username: str, permission: str) -> Dict:
+        """
+        Actualiza el permiso de un colaborador (es lo mismo que agregar con nuevo permiso).
+        """
+        return self.add_collaborator(owner, repo, username, permission)
 
     def get_org_repos(self, org: str) -> List[Dict]:
         """
