@@ -1,0 +1,5 @@
+# DLP Console - Dependencias
+# Cibershield R.L. 2025
+
+flask>=2.3.0
+flask-cors>=4.0.0
