@@ -64,7 +64,7 @@ DASHBOARD_HTML = """
 <head>
     <meta charset="UTF-8">
     <meta name="viewport" content="width=device-width, initial-scale=1.0">
-    <title>GitHub DLP Console</title>
+    <title>Administración GitHub - Cibershield</title>
     <style>
         * {
             margin: 0;
@@ -964,7 +964,7 @@ DASHBOARD_HTML = """
 </head>
 <body>
     <div class="header">
-        <h1>DLP Console v0.9</h1>
+        <h1>Administración GitHub</h1>
         <div class="header-right">
             <div class="status">
                 <span class="status-dot"></span>
@@ -1133,7 +1133,7 @@ DASHBOARD_HTML = """
     </div>
 
     <footer class="footer">
-        <p>Desarrollado por <strong>Cibershield R.L.</strong> 2025. Todos los derechos reservados. | Versión 0.9</p>
+        <p>Desarrollado por <strong>Cibershield R.L.</strong> 2025. Todos los derechos reservados.</p>
     </footer>
 
     <script>
@@ -2188,7 +2188,7 @@ def api_update_collaborator_permission(org, repo, username):
 def main():
     """Punto de entrada principal"""
     print("=" * 60)
-    print("🛡️  DLP Console v0.9")
+    print("🛡️  Administración GitHub")
     print("   Desarrollado por Cibershield R.L. 2025")
     print("   Todos los derechos reservados.")
     print("=" * 60)
