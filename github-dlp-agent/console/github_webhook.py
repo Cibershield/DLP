@@ -44,6 +44,13 @@ class GitHubWebhookHandler:
         self.known_agents_file = self.data_dir / "known_agents.json"
         self.known_agents = self._load_json(self.known_agents_file, {})
 
+        # Eventos Git reportados por agentes DLP (para correlación)
+        self.dlp_git_events_file = self.data_dir / "dlp_git_events.json"
+        self.dlp_git_events = self._load_json(self.dlp_git_events_file, [])
+
+        # Ventana de tiempo para correlación (5 minutos)
+        self.correlation_window_seconds = 300
+
     def _load_json(self, path: Path, default) -> any:
         """Carga un archivo JSON o retorna el default"""
         try:
@@ -97,11 +104,86 @@ class GitHubWebhookHandler:
 
     def is_known_user(self, username: str) -> bool:
         """Verifica si un usuario de GitHub está asociado a un agente conocido"""
-        # Buscar en eventos previos de agentes
         for agent_key, agent_data in self.known_agents.items():
             if agent_data.get("github_user") == username:
                 return True
         return False
+
+    def record_dlp_git_event(self, github_user: str, repo_name: str, hostname: str, ip: str,
+                              operation: str = "push", branch: str = ""):
+        """Registra un evento Git reportado por un agente DLP (push, clone, pull, fetch)"""
+        event = {
+            "timestamp": datetime.now().isoformat(),
+            "github_user": github_user,
+            "repo_name": repo_name,
+            "hostname": hostname,
+            "ip": ip,
+            "operation": operation,
+            "branch": branch
+        }
+        self.dlp_git_events.append(event)
+
+        # Mantener solo últimos 1000 eventos (para correlación)
+        if len(self.dlp_git_events) > 1000:
+            self.dlp_git_events = self.dlp_git_events[-1000:]
+
+        self._save_json(self.dlp_git_events_file, self.dlp_git_events)
+        logger.info(f"📝 {operation.upper()} DLP registrado: {github_user} -> {repo_name} desde {hostname}")
+
+    def has_matching_dlp_event(self, github_user: str, repo_name: str, operation: str = None) -> Dict:
+        """
+        Verifica si hay un evento Git del agente DLP que coincida.
+        Retorna el evento del agente si existe, None si no.
+        """
+        now = datetime.now()
+
+        for event in reversed(self.dlp_git_events):
+            # Verificar usuario
+            if event.get("github_user") != github_user:
+                continue
+
+            # Verificar operación si se especifica
+            if operation and event.get("operation") != operation:
+                continue
+
+            # Verificar si el repo coincide (puede ser parcial)
+            event_repo = event.get("repo_name", "")
+            if repo_name and event_repo:
+                # Comparar nombres de repo (ignorar organización)
+                webhook_repo_name = repo_name.split("/")[-1] if "/" in repo_name else repo_name
+                dlp_repo_name = event_repo.split("/")[-1] if "/" in event_repo else event_repo
+                if webhook_repo_name.lower() != dlp_repo_name.lower():
+                    continue
+
+            # Verificar ventana de tiempo
+            try:
+                event_time = datetime.fromisoformat(event["timestamp"])
+                time_diff = (now - event_time).total_seconds()
+                if time_diff <= self.correlation_window_seconds:
+                    return event
+            except:
+                continue
+
+        return None
+
+    def get_dlp_git_events(self, limit: int = 100, operation: str = None) -> List[Dict]:
+        """Obtiene eventos Git reportados por agentes DLP"""
+        events = self.dlp_git_events
+        if operation:
+            events = [e for e in events if e.get("operation") == operation]
+        return sorted(events, key=lambda x: x.get("timestamp", ""), reverse=True)[:limit]
+
+    def get_user_registered_machines(self, github_user: str) -> List[Dict]:
+        """Obtiene las máquinas registradas para un usuario de GitHub"""
+        machines = []
+        for agent_key, agent_data in self.known_agents.items():
+            if agent_data.get("github_user") == github_user:
+                machines.append({
+                    "hostname": agent_data.get("hostname"),
+                    "ip": agent_data.get("ip"),
+                    "last_seen": agent_data.get("last_seen")
+                })
+        return machines
 
     def get_known_github_users(self) -> List[str]:
         """Obtiene lista de usuarios de GitHub asociados a agentes DLP"""
@@ -165,12 +247,37 @@ class GitHubWebhookHandler:
         commits = payload.get("commits", [])
 
         # Verificar si el usuario está asociado a un agente DLP
-        is_known = self.is_known_user(pusher)
+        is_known_user = self.is_known_user(pusher)
+
+        # Verificar si hay un evento DLP que coincida (push desde máquina con agente)
+        matching_dlp_event = self.has_matching_dlp_event(pusher, repo_name, "push")
+
+        # Determinar si está autorizado:
+        # - Usuario conocido Y tiene evento DLP reciente = autorizado
+        # - Usuario conocido PERO sin evento DLP = push desde máquina sin agente
+        # - Usuario desconocido = no autorizado
+        is_authorized = is_known_user and matching_dlp_event is not None
+
+        # Determinar el tipo de alerta
+        if not is_known_user:
+            alert_type = "user_not_registered"
+            alert_message = "Push desde usuario no registrado en ningún agente DLP"
+        elif not matching_dlp_event:
+            alert_type = "no_agent_detected"
+            alert_message = "Push desde equipo SIN agente DLP (usuario registrado pero sin correlación)"
+            registered_machines = self.get_user_registered_machines(pusher)
+            if registered_machines:
+                machines_str = ", ".join([m["hostname"] for m in registered_machines])
+                alert_message += f". Máquinas registradas: {machines_str}"
+        else:
+            alert_type = None
+            alert_message = None
 
         event_data = {
             "processed": True,
             "event_type": "push",
-            "is_authorized": is_known,
+            "is_authorized": is_authorized,
+            "alert_type": alert_type,
             "details": {
                 "pusher": pusher,
                 "pusher_email": pusher_email,
@@ -179,15 +286,17 @@ class GitHubWebhookHandler:
                 "ref": ref,
                 "commits_count": len(commits),
                 "source_ip": source_ip,
-                "timestamp": datetime.now().isoformat()
+                "timestamp": datetime.now().isoformat(),
+                "matching_dlp_event": matching_dlp_event
             }
         }
 
-        # Si no es conocido, registrar como acceso no autorizado
-        if not is_known:
+        # Si no está autorizado, registrar como acceso no autorizado
+        if not is_authorized:
             unauthorized_event = {
                 "timestamp": datetime.now().isoformat(),
                 "event_type": "push",
+                "alert_type": alert_type,
                 "username": pusher,
                 "email": pusher_email,
                 "repo_name": repo_name,
@@ -196,7 +305,8 @@ class GitHubWebhookHandler:
                 "commits_count": len(commits),
                 "source_ip": source_ip,
                 "source": "github_webhook",
-                "message": f"Push desde usuario no registrado en agente DLP"
+                "message": alert_message,
+                "is_known_user": is_known_user
             }
             self.unauthorized_pushes.append(unauthorized_event)
 
@@ -206,7 +316,10 @@ class GitHubWebhookHandler:
 
             self._save_json(self.unauthorized_pushes_file, self.unauthorized_pushes)
 
-            logger.warning(f"🚨 Push no autorizado: {pusher} -> {repo_name}")
+            if alert_type == "no_agent_detected":
+                logger.warning(f"🚨 Push SIN AGENTE: {pusher} -> {repo_name} (usuario conocido, máquina desconocida)")
+            else:
+                logger.warning(f"🚨 Push no autorizado: {pusher} -> {repo_name}")
 
         return event_data
 

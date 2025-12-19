@@ -2298,6 +2298,37 @@ def api_register_github_user():
     return jsonify({"success": True, "message": f"Usuario {github_user} registrado para {hostname}"})
 
 
+@app.route('/api/dlp/git-event', methods=['POST'])
+def api_dlp_git_event():
+    """
+    Endpoint para que los agentes DLP reporten eventos Git.
+    Soporta: push, clone, pull, fetch, checkout
+    Esto permite correlacionar con webhooks de GitHub para detectar
+    actividad desde máquinas sin agente.
+    """
+    if not WEBHOOK_ENABLED or not webhook_handler:
+        return jsonify({"error": "Webhook handler not enabled"}), 503
+
+    from flask import request
+    data = request.get_json() or {}
+
+    github_user = data.get('github_user')
+    repo_name = data.get('repo_name')
+    hostname = data.get('hostname')
+    ip = data.get('ip') or request.remote_addr
+    operation = data.get('operation', 'push')  # push, clone, pull, fetch
+    branch = data.get('branch', '')
+
+    if not all([github_user, repo_name, hostname]):
+        return jsonify({"error": "Se requieren github_user, repo_name y hostname"}), 400
+
+    webhook_handler.record_dlp_git_event(github_user, repo_name, hostname, ip, operation, branch)
+    return jsonify({
+        "success": True,
+        "message": f"{operation.upper()} registrado: {github_user} -> {repo_name} desde {hostname}"
+    })
+
+
 def main():
     """Punto de entrada principal"""
     print("=" * 60)
