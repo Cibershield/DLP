@@ -170,7 +170,88 @@ DASHBOARD_HTML = """
             0%, 100% { opacity: 1; }
             50% { opacity: 0.5; }
         }
-        
+
+        @keyframes fadeIn {
+            from { opacity: 0; }
+            to { opacity: 1; }
+        }
+
+        @keyframes slideInUp {
+            from {
+                opacity: 0;
+                transform: translateY(20px);
+            }
+            to {
+                opacity: 1;
+                transform: translateY(0);
+            }
+        }
+
+        @keyframes slideInLeft {
+            from {
+                opacity: 0;
+                transform: translateX(-20px);
+            }
+            to {
+                opacity: 1;
+                transform: translateX(0);
+            }
+        }
+
+        @keyframes scaleIn {
+            from {
+                opacity: 0;
+                transform: scale(0.95);
+            }
+            to {
+                opacity: 1;
+                transform: scale(1);
+            }
+        }
+
+        @keyframes shimmer {
+            0% { background-position: -200% 0; }
+            100% { background-position: 200% 0; }
+        }
+
+        @keyframes glowPulse {
+            0%, 100% { box-shadow: 0 0 5px rgba(0, 212, 255, 0.3); }
+            50% { box-shadow: 0 0 20px rgba(0, 212, 255, 0.6); }
+        }
+
+        @keyframes numberPop {
+            0% { transform: scale(1); }
+            50% { transform: scale(1.1); }
+            100% { transform: scale(1); }
+        }
+
+        @keyframes borderGlow {
+            0%, 100% { border-color: rgba(0, 212, 255, 0.5); }
+            50% { border-color: rgba(0, 212, 255, 1); }
+        }
+
+        /* Loading spinner */
+        .loading-spinner {
+            display: inline-block;
+            width: 20px;
+            height: 20px;
+            border: 2px solid rgba(0, 212, 255, 0.3);
+            border-radius: 50%;
+            border-top-color: #00d4ff;
+            animation: spin 0.8s linear infinite;
+        }
+
+        @keyframes spin {
+            to { transform: rotate(360deg); }
+        }
+
+        /* Shimmer loading effect */
+        .loading-shimmer {
+            background: linear-gradient(90deg, #1a1a2e 25%, #252545 50%, #1a1a2e 75%);
+            background-size: 200% 100%;
+            animation: shimmer 1.5s infinite;
+        }
+
         .stats-bar {
             display: grid;
             grid-template-columns: repeat(auto-fit, minmax(150px, 1fr));
@@ -184,30 +265,59 @@ DASHBOARD_HTML = """
             padding: 15px;
             border-radius: 10px;
             border-left: 4px solid #00d4ff;
+            transition: all 0.3s cubic-bezier(0.4, 0, 0.2, 1);
+            animation: slideInUp 0.4s ease-out;
+            cursor: default;
         }
-        
+
+        .stat-card:hover {
+            transform: translateY(-5px);
+            box-shadow: 0 10px 30px rgba(0, 212, 255, 0.2);
+        }
+
         .stat-card.alert {
             border-left-color: #ff4757;
         }
-        
+
+        .stat-card.alert:hover {
+            box-shadow: 0 10px 30px rgba(255, 71, 87, 0.2);
+        }
+
         .stat-card.success {
             border-left-color: #00ff88;
         }
-        
+
+        .stat-card.success:hover {
+            box-shadow: 0 10px 30px rgba(0, 255, 136, 0.2);
+        }
+
         .stat-card.network {
             border-left-color: #ffa502;
         }
-        
+
+        .stat-card.network:hover {
+            box-shadow: 0 10px 30px rgba(255, 165, 2, 0.2);
+        }
+
         .stat-card.metric {
             border-left-color: #a29bfe;
         }
-        
+
+        .stat-card.metric:hover {
+            box-shadow: 0 10px 30px rgba(162, 155, 254, 0.2);
+        }
+
         .stat-value {
             font-size: 1.8rem;
             font-weight: bold;
             color: #fff;
+            transition: transform 0.3s ease;
         }
-        
+
+        .stat-card:hover .stat-value {
+            animation: numberPop 0.4s ease;
+        }
+
         .stat-label {
             color: #888;
             font-size: 0.8rem;
@@ -294,8 +404,9 @@ DASHBOARD_HTML = """
             background: #1a1a2e;
             border-radius: 10px;
             overflow: hidden;
+            animation: fadeIn 0.5s ease-out;
         }
-        
+
         .events-table th {
             background: #16213e;
             padding: 12px;
@@ -305,35 +416,61 @@ DASHBOARD_HTML = """
             font-size: 0.85rem;
             border-bottom: 2px solid #333;
         }
-        
+
         .events-table td {
             padding: 10px 12px;
             border-bottom: 1px solid #2a2a4a;
             font-size: 0.85rem;
+            transition: all 0.2s ease;
         }
-        
-        .events-table tr:hover {
+
+        .events-table tbody tr {
+            transition: all 0.3s cubic-bezier(0.4, 0, 0.2, 1);
+        }
+
+        .events-table tbody tr:hover {
             background: #252545;
+            transform: scale(1.01);
+            box-shadow: 0 4px 15px rgba(0, 0, 0, 0.3);
         }
-        
+
+        .events-table tbody tr:hover td {
+            color: #fff;
+        }
+
         .badge {
             padding: 3px 8px;
             border-radius: 20px;
             font-size: 0.7rem;
             font-weight: 600;
             text-transform: uppercase;
+            transition: all 0.3s ease;
         }
-        
+
+        .badge:hover {
+            transform: scale(1.1);
+        }
+
         .badge.blocked {
             background: rgba(255, 71, 87, 0.2);
             color: #ff4757;
             border: 1px solid #ff4757;
         }
-        
+
+        .badge.blocked:hover {
+            background: rgba(255, 71, 87, 0.4);
+            box-shadow: 0 0 10px rgba(255, 71, 87, 0.5);
+        }
+
         .badge.allowed {
             background: rgba(0, 255, 136, 0.2);
             color: #00ff88;
             border: 1px solid #00ff88;
+        }
+
+        .badge.allowed:hover {
+            background: rgba(0, 255, 136, 0.4);
+            box-shadow: 0 0 10px rgba(0, 255, 136, 0.5);
         }
         
         .badge.network {
@@ -489,6 +626,7 @@ DASHBOARD_HTML = """
             background: #1a1a2e;
             padding: 0 30px;
             border-bottom: 1px solid #333;
+            overflow-x: auto;
         }
 
         .nav-tab {
@@ -499,25 +637,50 @@ DASHBOARD_HTML = """
             cursor: pointer;
             font-size: 0.95rem;
             border-bottom: 3px solid transparent;
-            transition: all 0.3s;
+            transition: all 0.3s cubic-bezier(0.4, 0, 0.2, 1);
+            position: relative;
+            overflow: hidden;
+        }
+
+        .nav-tab::before {
+            content: '';
+            position: absolute;
+            top: 0;
+            left: -100%;
+            width: 100%;
+            height: 100%;
+            background: linear-gradient(90deg, transparent, rgba(0, 212, 255, 0.1), transparent);
+            transition: left 0.5s;
+        }
+
+        .nav-tab:hover::before {
+            left: 100%;
         }
 
         .nav-tab:hover {
             color: #e0e0e0;
-            background: rgba(0, 212, 255, 0.1);
+            background: rgba(0, 212, 255, 0.05);
+            transform: translateY(-2px);
+        }
+
+        .nav-tab:active {
+            transform: translateY(0) scale(0.98);
         }
 
         .nav-tab.active {
             color: #00d4ff;
             border-bottom-color: #00d4ff;
+            background: rgba(0, 212, 255, 0.08);
         }
 
         .tab-content {
             display: none;
+            animation: fadeIn 0.4s ease-out;
         }
 
         .tab-content.active {
             display: block;
+            animation: slideInUp 0.4s ease-out;
         }
 
         /* Repository cards */
@@ -533,10 +696,21 @@ DASHBOARD_HTML = """
             border-radius: 10px;
             padding: 20px;
             border-left: 4px solid #00d4ff;
+            transition: all 0.3s cubic-bezier(0.4, 0, 0.2, 1);
+            animation: scaleIn 0.4s ease-out;
+        }
+
+        .repo-card:hover {
+            transform: translateY(-5px) scale(1.02);
+            box-shadow: 0 15px 40px rgba(0, 212, 255, 0.15);
         }
 
         .repo-card.warning {
             border-left-color: #ff4757;
+        }
+
+        .repo-card.warning:hover {
+            box-shadow: 0 15px 40px rgba(255, 71, 87, 0.15);
         }
 
         .repo-card-header {
@@ -573,12 +747,23 @@ DASHBOARD_HTML = """
             padding: 8px;
             background: #16213e;
             border-radius: 6px;
+            transition: all 0.3s ease;
+        }
+
+        .repo-stat:hover {
+            background: #1e2a4a;
+            transform: scale(1.05);
         }
 
         .repo-stat-value {
             font-size: 1.3rem;
             font-weight: bold;
             color: #fff;
+            transition: transform 0.3s ease;
+        }
+
+        .repo-stat:hover .repo-stat-value {
+            animation: numberPop 0.4s ease;
         }
 
         .repo-stat-label {
@@ -599,6 +784,14 @@ DASHBOARD_HTML = """
             padding: 3px 10px;
             border-radius: 15px;
             font-size: 0.75rem;
+            transition: all 0.3s ease;
+            cursor: default;
+        }
+
+        .user-tag:hover {
+            background: rgba(0, 212, 255, 0.4);
+            transform: scale(1.1);
+            box-shadow: 0 3px 10px rgba(0, 212, 255, 0.3);
         }
 
         .alert-tag {
@@ -607,6 +800,13 @@ DASHBOARD_HTML = """
             padding: 3px 10px;
             border-radius: 15px;
             font-size: 0.75rem;
+            transition: all 0.3s ease;
+            animation: pulse 2s infinite;
+        }
+
+        .alert-tag:hover {
+            background: rgba(255, 71, 87, 0.4);
+            transform: scale(1.1);
         }
 
         /* Agents section */
@@ -622,6 +822,13 @@ DASHBOARD_HTML = """
             border-radius: 10px;
             padding: 15px;
             border-left: 4px solid #00ff88;
+            transition: all 0.3s cubic-bezier(0.4, 0, 0.2, 1);
+            animation: slideInLeft 0.4s ease-out;
+        }
+
+        .agent-info-card:hover {
+            transform: translateX(5px) scale(1.02);
+            box-shadow: 0 10px 30px rgba(0, 255, 136, 0.15);
         }
 
         .agent-info-card h4 {
@@ -655,6 +862,13 @@ DASHBOARD_HTML = """
             display: flex;
             justify-content: space-between;
             align-items: center;
+            transition: all 0.3s cubic-bezier(0.4, 0, 0.2, 1);
+            animation: slideInUp 0.4s ease-out;
+        }
+
+        .unauthorized-item:hover {
+            transform: translateX(5px);
+            box-shadow: 0 5px 20px rgba(255, 71, 87, 0.2);
         }
 
         .unauthorized-item .details {
@@ -2173,12 +2387,59 @@ DASHBOARD_HTML = """
             renderOrgRepos(filtered);
         }
 
+        // Variable para rastrear panel de colaboradores abierto
+        let currentOpenCollabPanel = null;
+
+        // Función para cerrar panel de colaboradores
+        function closeCollaborators(repoName) {
+            const container = document.getElementById('collabs-' + repoName);
+            if (container) {
+                // Animación de cierre
+                const panel = container.querySelector('.collab-panel');
+                if (panel) {
+                    panel.style.animation = 'fadeIn 0.2s ease-out reverse';
+                    setTimeout(() => {
+                        container.innerHTML = `
+                            <button onclick="loadCollaborators('${currentOrgName}', '${repoName}')"
+                                    id="btn-collabs-${repoName}"
+                                    style="padding: 6px 12px; background: #16213e; color: #00d4ff; border: 1px solid #00d4ff; border-radius: 4px; cursor: pointer; font-size: 0.8rem; transition: all 0.2s ease;"
+                                    onmouseover="this.style.background='#00d4ff'; this.style.color='#000';"
+                                    onmouseout="this.style.background='#16213e'; this.style.color='#00d4ff';">
+                                Ver/Gestionar Colaboradores
+                            </button>
+                        `;
+                    }, 150);
+                }
+            }
+            currentOpenCollabPanel = null;
+        }
+
+        // Click fuera para cerrar panel de colaboradores
+        document.addEventListener('click', function(e) {
+            if (currentOpenCollabPanel) {
+                const container = document.getElementById('collabs-' + currentOpenCollabPanel);
+                if (container && !container.contains(e.target)) {
+                    // Verificar que no sea el botón que abre el panel
+                    const btn = document.getElementById('btn-collabs-' + currentOpenCollabPanel);
+                    if (!btn || !btn.contains(e.target)) {
+                        closeCollaborators(currentOpenCollabPanel);
+                    }
+                }
+            }
+        });
+
         // Función loadCollaborators con protección contra doble-click
         async function loadCollaborators(org, repoName) {
             // Prevenir doble carga
             if (loadingCollaborators[repoName]) {
                 return;
             }
+
+            // Cerrar panel previamente abierto
+            if (currentOpenCollabPanel && currentOpenCollabPanel !== repoName) {
+                closeCollaborators(currentOpenCollabPanel);
+            }
+
             loadingCollaborators[repoName] = true;
 
             const container = document.getElementById('collabs-' + repoName);
@@ -2234,28 +2495,40 @@ DASHBOARD_HTML = """
                 }
 
                 container.innerHTML = `
-                    <h4 style="color: #888; font-size: 0.8rem; margin-bottom: 10px;">Colaboradores (${data.collaborators ? data.collaborators.length : 0})</h4>
-                    ${collabsHtml}
-                    <div style="margin-top: 12px; padding-top: 12px; border-top: 1px solid #333;">
-                        <h5 style="color: #888; font-size: 0.75rem; margin-bottom: 8px;">Agregar colaborador:</h5>
-                        <div style="display: flex; gap: 8px; flex-wrap: wrap;">
-                            <input type="text" id="new-collab-${repoName}" placeholder="Usuario GitHub"
-                                   style="padding: 6px 10px; background: #1a1a2e; color: #e0e0e0; border: 1px solid #333; border-radius: 4px; font-size: 0.8rem; width: 150px;">
-                            <select id="new-collab-perm-${repoName}"
-                                    style="padding: 6px 10px; background: #1a1a2e; color: #e0e0e0; border: 1px solid #333; border-radius: 4px; font-size: 0.8rem;">
-                                <option value="pull">Read</option>
-                                <option value="triage">Triage</option>
-                                <option value="push" selected>Write</option>
-                                <option value="maintain">Maintain</option>
-                                <option value="admin">Admin</option>
-                            </select>
-                            <button onclick="addCollaborator('${org}', '${repoName}')"
-                                    style="padding: 6px 12px; background: #00ff88; color: #000; border: none; border-radius: 4px; cursor: pointer; font-size: 0.8rem; font-weight: 600;">
-                                Agregar
-                            </button>
+                    <div class="collab-panel" style="background: #1a1a2e; border: 1px solid #333; border-radius: 8px; padding: 15px; margin-top: 10px; position: relative; animation: scaleIn 0.3s ease-out;">
+                        <button onclick="closeCollaborators('${repoName}')"
+                                style="position: absolute; top: 8px; right: 8px; background: #ff4757; color: white; border: none; border-radius: 50%; width: 24px; height: 24px; cursor: pointer; font-size: 14px; line-height: 1; transition: all 0.2s ease;"
+                                onmouseover="this.style.transform='scale(1.1)'; this.style.background='#ff6b7a';"
+                                onmouseout="this.style.transform='scale(1)'; this.style.background='#ff4757';"
+                                title="Cerrar">✕</button>
+                        <h4 style="color: #00d4ff; font-size: 0.9rem; margin-bottom: 12px; padding-right: 30px;">👥 Colaboradores (${data.collaborators ? data.collaborators.length : 0})</h4>
+                        ${collabsHtml}
+                        <div style="margin-top: 12px; padding-top: 12px; border-top: 1px solid #333;">
+                            <h5 style="color: #888; font-size: 0.75rem; margin-bottom: 8px;">Agregar colaborador:</h5>
+                            <div style="display: flex; gap: 8px; flex-wrap: wrap;">
+                                <input type="text" id="new-collab-${repoName}" placeholder="Usuario GitHub"
+                                       style="padding: 6px 10px; background: #0f0f23; color: #e0e0e0; border: 1px solid #333; border-radius: 4px; font-size: 0.8rem; width: 150px;">
+                                <select id="new-collab-perm-${repoName}"
+                                        style="padding: 6px 10px; background: #0f0f23; color: #e0e0e0; border: 1px solid #333; border-radius: 4px; font-size: 0.8rem;">
+                                    <option value="pull">Read</option>
+                                    <option value="triage">Triage</option>
+                                    <option value="push" selected>Write</option>
+                                    <option value="maintain">Maintain</option>
+                                    <option value="admin">Admin</option>
+                                </select>
+                                <button onclick="addCollaborator('${org}', '${repoName}')"
+                                        style="padding: 6px 12px; background: #00ff88; color: #000; border: none; border-radius: 4px; cursor: pointer; font-size: 0.8rem; font-weight: 600; transition: all 0.2s ease;"
+                                        onmouseover="this.style.transform='scale(1.05)'; this.style.boxShadow='0 4px 15px rgba(0,255,136,0.4)';"
+                                        onmouseout="this.style.transform='scale(1)'; this.style.boxShadow='none';">
+                                    Agregar
+                                </button>
+                            </div>
                         </div>
                     </div>
                 `;
+
+                // Marcar este panel como abierto
+                currentOpenCollabPanel = repoName;
             } catch (error) {
                 container.innerHTML = '<span style="color: #ff4757; font-size: 0.8rem;">Error: ' + error.message + '</span>';
             } finally {
