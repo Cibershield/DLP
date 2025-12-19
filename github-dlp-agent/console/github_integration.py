@@ -147,19 +147,36 @@ class GitHubIntegration:
             "paths": paths if paths and "error" not in paths else []
         }
 
-    def get_org_traffic_summary(self, org: str) -> Dict:
+    def get_org_traffic_summary(self, org: str, max_repos: int = 30) -> Dict:
         """
-        Obtiene estadísticas de tráfico de todos los repositorios de una organización.
+        Obtiene estadísticas de tráfico de los repositorios más activos de una organización.
         Requiere permisos de admin o push en los repos.
+
+        Args:
+            org: Nombre de la organización
+            max_repos: Máximo de repos a consultar (default 30, los más recientes)
 
         Returns:
             Dict con resumen de tráfico por repositorio
         """
-        repos = self.get_org_repos(org)
+        # Verificar caché (10 minutos)
+        cache_key = f"org_traffic:{org}"
+        if cache_key in self._cache:
+            cached = self._cache[cache_key]
+            if (datetime.now() - cached['time']).seconds < 600:  # 10 minutos
+                return cached['data']
+
+        all_repos = self.get_org_repos(org)
+
+        # Ordenar por actividad reciente (pushed_at) y tomar solo los más activos
+        sorted_repos = sorted(all_repos, key=lambda x: x.get("pushed_at") or "", reverse=True)
+        repos = sorted_repos[:max_repos]
+
         traffic_data = {
             "organization": org,
             "timestamp": datetime.now().isoformat(),
-            "total_repos": len(repos),
+            "total_repos": len(all_repos),
+            "repos_checked": len(repos),
             "total_clones": 0,
             "total_unique_cloners": 0,
             "total_views": 0,
@@ -228,6 +245,9 @@ class GitHubIntegration:
             {"date": date, **data}
             for date, data in sorted(traffic_data["daily_clones"].items())
         ]
+
+        # Guardar en caché
+        self._cache[cache_key] = {'data': traffic_data, 'time': datetime.now()}
 
         return traffic_data
 
