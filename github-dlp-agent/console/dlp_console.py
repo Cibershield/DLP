@@ -64,7 +64,7 @@ DASHBOARD_HTML = """
 <head>
     <meta charset="UTF-8">
     <meta name="viewport" content="width=device-width, initial-scale=1.0">
-    <title>Administración GitHub - Cibershield</title>
+    <title>Administración GitHub Delfix</title>
     <style>
         * {
             margin: 0;
@@ -964,7 +964,7 @@ DASHBOARD_HTML = """
 </head>
 <body>
     <div class="header">
-        <h1>Administración GitHub</h1>
+        <h1>Administración GitHub Delfix</h1>
         <div class="header-right">
             <div class="status">
                 <span class="status-dot"></span>
@@ -3655,7 +3655,7 @@ def api_db_unauthorized():
 def main():
     """Punto de entrada principal"""
     print("=" * 60)
-    print("🛡️  Administración GitHub")
+    print("🛡️  Administración GitHub Delfix")
     print("   Desarrollado por Cibershield R.L. 2025")
     print("   Todos los derechos reservados.")
     print("=" * 60)
