@@ -159,11 +159,11 @@ class GitHubIntegration:
         Returns:
             Dict con resumen de tráfico por repositorio
         """
-        # Verificar caché (10 minutos)
+        # Verificar caché (30 minutos)
         cache_key = f"org_traffic:{org}"
         if cache_key in self._cache:
             cached = self._cache[cache_key]
-            if (datetime.now() - cached['time']).seconds < 600:  # 10 minutos
+            if (datetime.now() - cached['time']).seconds < 1800:  # 30 minutos
                 return cached['data']
 
         all_repos = self.get_org_repos(org)
