@@ -1123,6 +1123,29 @@ DASHBOARD_HTML = """
             <button onclick="fetchTrafficStats()" style="padding: 10px 20px; background: #00d4ff; color: #000; border: none; border-radius: 6px; cursor: pointer; font-weight: 600;">Cargar Estadísticas</button>
         </div>
 
+        <!-- Filtro de repositorio -->
+        <div id="traffic-repo-filter" style="display: none; margin-bottom: 20px; background: #1a1a2e; padding: 15px; border-radius: 10px;">
+            <div style="display: flex; gap: 15px; flex-wrap: wrap; align-items: center;">
+                <div style="flex: 1; min-width: 250px;">
+                    <label style="color: #888; font-size: 0.85rem; display: block; margin-bottom: 5px;">Buscar repositorio:</label>
+                    <input type="text" id="traffic-repo-search" placeholder="Escriba para buscar..."
+                           oninput="filterTrafficRepos()"
+                           style="padding: 10px 15px; border: 1px solid #333; background: #0d0d1a; color: #e0e0e0; border-radius: 6px; width: 100%;">
+                </div>
+                <div style="flex: 1; min-width: 250px;">
+                    <label style="color: #888; font-size: 0.85rem; display: block; margin-bottom: 5px;">O seleccione de la lista:</label>
+                    <select id="traffic-repo-select" onchange="selectTrafficRepo()"
+                            style="padding: 10px 15px; border: 1px solid #333; background: #0d0d1a; color: #e0e0e0; border-radius: 6px; width: 100%; cursor: pointer;">
+                        <option value="">-- Todos los repositorios --</option>
+                    </select>
+                </div>
+                <div style="padding-top: 20px;">
+                    <button onclick="clearTrafficFilter()" style="padding: 8px 15px; background: #333; color: #e0e0e0; border: none; border-radius: 6px; cursor: pointer;">Limpiar filtro</button>
+                </div>
+            </div>
+            <div id="traffic-filter-info" style="margin-top: 10px; color: #00d4ff; font-size: 0.85rem; display: none;"></div>
+        </div>
+
         <!-- Stats Summary -->
         <div id="traffic-summary" style="display: none; margin-bottom: 20px;">
             <div style="display: grid; grid-template-columns: repeat(auto-fit, minmax(150px, 1fr)); gap: 15px;">
@@ -1196,6 +1219,29 @@ DASHBOARD_HTML = """
             <button onclick="fetchCorrelation()" style="padding: 10px 20px; background: #00d4ff; color: #000; border: none; border-radius: 6px; cursor: pointer; font-weight: 600;">Analizar Correlación</button>
         </div>
 
+        <!-- Filtro de repositorio -->
+        <div id="correlation-repo-filter" style="display: none; margin-bottom: 20px; background: #1a1a2e; padding: 15px; border-radius: 10px;">
+            <div style="display: flex; gap: 15px; flex-wrap: wrap; align-items: center;">
+                <div style="flex: 1; min-width: 250px;">
+                    <label style="color: #888; font-size: 0.85rem; display: block; margin-bottom: 5px;">Buscar repositorio:</label>
+                    <input type="text" id="correlation-repo-search" placeholder="Escriba para buscar..."
+                           oninput="filterCorrelationRepos()"
+                           style="padding: 10px 15px; border: 1px solid #333; background: #0d0d1a; color: #e0e0e0; border-radius: 6px; width: 100%;">
+                </div>
+                <div style="flex: 1; min-width: 250px;">
+                    <label style="color: #888; font-size: 0.85rem; display: block; margin-bottom: 5px;">O seleccione de la lista:</label>
+                    <select id="correlation-repo-select" onchange="selectCorrelationRepo()"
+                            style="padding: 10px 15px; border: 1px solid #333; background: #0d0d1a; color: #e0e0e0; border-radius: 6px; width: 100%; cursor: pointer;">
+                        <option value="">-- Todos los repositorios --</option>
+                    </select>
+                </div>
+                <div style="padding-top: 20px;">
+                    <button onclick="clearCorrelationFilter()" style="padding: 8px 15px; background: #333; color: #e0e0e0; border: none; border-radius: 6px; cursor: pointer;">Limpiar filtro</button>
+                </div>
+            </div>
+            <div id="correlation-filter-info" style="margin-top: 10px; color: #00d4ff; font-size: 0.85rem; display: none;"></div>
+        </div>
+
         <!-- Alertas de actividad sospechosa -->
         <div id="correlation-alerts" style="display: none; margin-bottom: 20px;">
             <h3 style="color: #ff4757; margin-bottom: 10px;">🚨 Alertas de Actividad</h3>
@@ -1252,7 +1298,7 @@ DASHBOARD_HTML = """
         <div class="section-header">
             <h2>📊 Historial de Eventos</h2>
         </div>
-        <p style="color: #888; margin-bottom: 15px;">Consulta el historial completo de eventos con filtros avanzados.</p>
+        <p style="color: #888; margin-bottom: 15px;">Consulta el historial de eventos. Todos los filtros son opcionales - puedes buscar por cualquier combinación.</p>
 
         <!-- Filtros -->
         <div class="history-filters" style="background: #1a1a2e; padding: 20px; border-radius: 10px; margin-bottom: 20px;">
@@ -1341,7 +1387,7 @@ DASHBOARD_HTML = """
 
         <!-- Resultados -->
         <div id="history-results">
-            <p style="color: #666; text-align: center; padding: 40px;">Usa los filtros para buscar eventos en el historial.</p>
+            <p style="color: #666; text-align: center; padding: 40px;">Haz clic en "Buscar" para cargar eventos. Puedes usar cualquier filtro o ninguno.</p>
         </div>
 
         <!-- Paginación -->
@@ -2451,14 +2497,61 @@ DASHBOARD_HTML = """
             }
         }
 
+        let trafficFilteredRepoName = '';
+
         function renderTrafficStats() {
             if (!trafficData) return;
 
+            const repos = trafficData.repos_with_traffic || [];
+
+            // Poblar dropdown de repositorios
+            const select = document.getElementById('traffic-repo-select');
+            select.innerHTML = '<option value="">-- Todos los repositorios --</option>';
+            repos.sort((a, b) => a.name.localeCompare(b.name)).forEach(r => {
+                select.innerHTML += `<option value="${r.name}">${r.name}</option>`;
+            });
+
+            // Mostrar filtro si hay repos
+            if (repos.length > 0) {
+                document.getElementById('traffic-repo-filter').style.display = 'block';
+            }
+
+            // Filtrar repos si hay filtro activo
+            let filteredRepos = repos;
+            const searchTerm = document.getElementById('traffic-repo-search').value.toLowerCase().trim();
+
+            if (trafficFilteredRepoName) {
+                filteredRepos = repos.filter(r => r.name === trafficFilteredRepoName);
+            } else if (searchTerm) {
+                filteredRepos = repos.filter(r => r.name.toLowerCase().includes(searchTerm));
+            }
+
+            // Calcular totales (filtrados o totales)
+            let totalClones = 0, totalUniqueCloners = 0, totalViews = 0, totalUniqueVisitors = 0;
+            if (filteredRepos.length > 0 && (trafficFilteredRepoName || searchTerm)) {
+                filteredRepos.forEach(r => {
+                    totalClones += r.clones || 0;
+                    totalUniqueCloners += r.unique_cloners || 0;
+                    totalViews += r.views || 0;
+                    totalUniqueVisitors += r.unique_visitors || 0;
+                });
+                // Mostrar info de filtro
+                const filterInfo = document.getElementById('traffic-filter-info');
+                filterInfo.textContent = `Mostrando ${filteredRepos.length} de ${repos.length} repositorios`;
+                filterInfo.style.display = 'block';
+            } else {
+                totalClones = trafficData.total_clones || 0;
+                totalUniqueCloners = trafficData.total_unique_cloners || 0;
+                totalViews = trafficData.total_views || 0;
+                totalUniqueVisitors = trafficData.total_unique_visitors || 0;
+                document.getElementById('traffic-filter-info').style.display = 'none';
+            }
+
             // Mostrar resumen
-            document.getElementById('traffic-total-clones').textContent = trafficData.total_clones || 0;
-            document.getElementById('traffic-unique-cloners').textContent = trafficData.total_unique_cloners || 0;
-            document.getElementById('traffic-total-views').textContent = trafficData.total_views || 0;
-            document.getElementById('traffic-unique-visitors').textContent = trafficData.total_unique_visitors || 0;
+            document.getElementById('traffic-total-clones').textContent = totalClones;
+            document.getElementById('traffic-unique-cloners').textContent = totalUniqueCloners;
+            document.getElementById('traffic-total-views').textContent = totalViews;
+            document.getElementById('traffic-unique-visitors').textContent = totalUniqueVisitors;
             document.getElementById('traffic-summary').style.display = 'block';
 
             // Gráfica de clones diarios
@@ -2480,11 +2573,10 @@ DASHBOARD_HTML = """
                 document.getElementById('traffic-daily-chart').style.display = 'block';
             }
 
-            // Tabla de repos
-            const repos = trafficData.repos_with_traffic || [];
-            if (repos.length > 0) {
+            // Tabla de repos (filtrada)
+            if (filteredRepos.length > 0) {
                 const tbody = document.getElementById('traffic-repos-body');
-                tbody.innerHTML = repos.map(r => `
+                tbody.innerHTML = filteredRepos.map(r => `
                     <tr>
                         <td><a href="${r.url}" target="_blank" class="repo-link">${r.name}</a></td>
                         <td><span class="${r.private ? 'badge blocked' : 'badge allowed'}">${r.private ? 'Privado' : 'Público'}</span></td>
@@ -2495,7 +2587,29 @@ DASHBOARD_HTML = """
                     </tr>
                 `).join('');
                 document.getElementById('traffic-repos-section').style.display = 'block';
+            } else {
+                document.getElementById('traffic-repos-body').innerHTML = '<tr><td colspan="6" style="text-align: center; color: #888;">No hay repositorios que coincidan con el filtro</td></tr>';
+                document.getElementById('traffic-repos-section').style.display = 'block';
             }
+        }
+
+        function filterTrafficRepos() {
+            trafficFilteredRepoName = '';
+            document.getElementById('traffic-repo-select').value = '';
+            renderTrafficStats();
+        }
+
+        function selectTrafficRepo() {
+            trafficFilteredRepoName = document.getElementById('traffic-repo-select').value;
+            document.getElementById('traffic-repo-search').value = '';
+            renderTrafficStats();
+        }
+
+        function clearTrafficFilter() {
+            trafficFilteredRepoName = '';
+            document.getElementById('traffic-repo-search').value = '';
+            document.getElementById('traffic-repo-select').value = '';
+            renderTrafficStats();
         }
 
         // Permitir Enter en el input de tráfico
@@ -2555,11 +2669,44 @@ DASHBOARD_HTML = """
             }
         }
 
+        let correlationFilteredRepoName = '';
+
         function renderCorrelation() {
             if (!correlationData) return;
 
-            // Mostrar alertas si hay
-            const alerts = correlationData.alerts || [];
+            // Obtener todos los repos únicos para el dropdown
+            const dates = correlationData.dates_sorted || [];
+            const byDate = correlationData.by_date || {};
+            const allRepos = new Set();
+
+            for (const date of dates) {
+                const entries = byDate[date] || [];
+                entries.forEach(e => allRepos.add(e.repo));
+            }
+
+            // Poblar dropdown de repositorios
+            const select = document.getElementById('correlation-repo-select');
+            select.innerHTML = '<option value="">-- Todos los repositorios --</option>';
+            Array.from(allRepos).sort().forEach(r => {
+                select.innerHTML += `<option value="${r}">${r}</option>`;
+            });
+
+            // Mostrar filtro si hay repos
+            if (allRepos.size > 0) {
+                document.getElementById('correlation-repo-filter').style.display = 'block';
+            }
+
+            // Filtrar por repo
+            const searchTerm = document.getElementById('correlation-repo-search').value.toLowerCase().trim();
+
+            // Mostrar alertas (filtradas si aplica)
+            let alerts = correlationData.alerts || [];
+            if (correlationFilteredRepoName) {
+                alerts = alerts.filter(a => a.repo === correlationFilteredRepoName);
+            } else if (searchTerm) {
+                alerts = alerts.filter(a => a.repo.toLowerCase().includes(searchTerm));
+            }
+
             if (alerts.length > 0) {
                 const alertsHtml = alerts.map(a => `
                     <div style="margin-bottom: 10px; padding: 10px; background: #1a1a2e; border-radius: 6px; border-left: 3px solid #ff4757;">
@@ -2570,15 +2717,28 @@ DASHBOARD_HTML = """
                 `).join('');
                 document.getElementById('correlation-alerts-list').innerHTML = alertsHtml;
                 document.getElementById('correlation-alerts').style.display = 'block';
+            } else {
+                document.getElementById('correlation-alerts').style.display = 'none';
             }
 
-            // Tabla de correlación
-            const dates = correlationData.dates_sorted || [];
-            const byDate = correlationData.by_date || {};
-
+            // Tabla de correlación (filtrada)
             let tableHtml = '';
+            let totalEntries = 0;
+            let filteredEntries = 0;
+
             for (const date of dates) {
-                const entries = byDate[date] || [];
+                let entries = byDate[date] || [];
+                totalEntries += entries.length;
+
+                // Filtrar
+                if (correlationFilteredRepoName) {
+                    entries = entries.filter(e => e.repo === correlationFilteredRepoName);
+                } else if (searchTerm) {
+                    entries = entries.filter(e => e.repo.toLowerCase().includes(searchTerm));
+                }
+
+                filteredEntries += entries.length;
+
                 for (const entry of entries) {
                     const dateObj = new Date(date + 'T12:00:00');
                     const dayName = dayNames[dateObj.getDay()];
@@ -2601,14 +2761,47 @@ DASHBOARD_HTML = """
                 }
             }
 
+            // Mostrar info de filtro
+            const filterInfo = document.getElementById('correlation-filter-info');
+            if (correlationFilteredRepoName || searchTerm) {
+                filterInfo.textContent = `Mostrando ${filteredEntries} de ${totalEntries} registros`;
+                filterInfo.style.display = 'block';
+            } else {
+                filterInfo.style.display = 'none';
+            }
+
             if (tableHtml) {
                 document.getElementById('correlation-table-body').innerHTML = tableHtml;
                 document.getElementById('correlation-table-section').style.display = 'block';
             } else {
-                document.getElementById('correlation-table-section').style.display = 'none';
-                document.getElementById('correlation-empty').textContent = 'No se encontró actividad de clones en los últimos 14 días.';
-                document.getElementById('correlation-empty').style.display = 'block';
+                if (correlationFilteredRepoName || searchTerm) {
+                    document.getElementById('correlation-table-body').innerHTML = '<tr><td colspan="6" style="text-align: center; color: #888;">No hay registros que coincidan con el filtro</td></tr>';
+                    document.getElementById('correlation-table-section').style.display = 'block';
+                } else {
+                    document.getElementById('correlation-table-section').style.display = 'none';
+                    document.getElementById('correlation-empty').textContent = 'No se encontró actividad de clones en los últimos 14 días.';
+                    document.getElementById('correlation-empty').style.display = 'block';
+                }
             }
+        }
+
+        function filterCorrelationRepos() {
+            correlationFilteredRepoName = '';
+            document.getElementById('correlation-repo-select').value = '';
+            renderCorrelation();
+        }
+
+        function selectCorrelationRepo() {
+            correlationFilteredRepoName = document.getElementById('correlation-repo-select').value;
+            document.getElementById('correlation-repo-search').value = '';
+            renderCorrelation();
+        }
+
+        function clearCorrelationFilter() {
+            correlationFilteredRepoName = '';
+            document.getElementById('correlation-repo-search').value = '';
+            document.getElementById('correlation-repo-select').value = '';
+            renderCorrelation();
         }
 
         // ============================================
@@ -2695,6 +2888,52 @@ except ImportError as e:
     DATABASE_ENABLED = False
     dlp_db = None
     logger.warning(f"Base de datos deshabilitada: {e}")
+
+
+def load_events_from_database():
+    """Carga eventos recientes de la base de datos al iniciar"""
+    global stats
+
+    if not DATABASE_ENABLED or not dlp_db:
+        return
+
+    try:
+        # Cargar últimos eventos (máximo según configuración)
+        max_events = CONSOLE_CONFIG.get("max_events", 1000)
+        recent_events = dlp_db.get_dlp_events({}, limit=max_events)
+
+        # Insertar en orden inverso para que los más recientes queden primero
+        with events_lock:
+            for event in reversed(recent_events):
+                events_store.append(event)
+
+            # Recalcular estadísticas
+            for event in recent_events:
+                event_type = event.get("event_type", "unknown")
+
+                stats["total_events"] += 1
+                if event.get("is_allowed"):
+                    stats["allowed_events"] += 1
+                else:
+                    stats["blocked_events"] += 1
+
+                if event_type.startswith("git_") or event_type == "git_command":
+                    stats["git_commands"] += 1
+                elif event_type == "network_connection":
+                    stats["network_connections"] += 1
+                elif event_type == "new_repo_detected":
+                    stats["repos_detected"] += 1
+
+                stats["unique_users"].add(event.get("username", "unknown"))
+                stats["unique_hosts"].add(event.get("hostname", "unknown"))
+
+        logger.info(f"✓ Cargados {len(recent_events)} eventos desde la base de datos")
+    except Exception as e:
+        logger.error(f"Error cargando eventos de base de datos: {e}")
+
+
+# Cargar eventos al iniciar
+load_events_from_database()
 
 
 def tcp_receiver():
@@ -3301,7 +3540,7 @@ def api_dlp_git_event():
 def api_db_events():
     """
     API para consultar eventos con filtros.
-    Parámetros:
+    Parámetros (todos opcionales):
     - date_from, date_to: Rango de fechas (ISO format)
     - hour_from, hour_to: Rango de horas (0-23)
     - username: Filtrar por usuario
@@ -3339,7 +3578,15 @@ def api_db_events():
     offset = int(request.args.get('offset', 0))
 
     events = dlp_db.get_dlp_events(filters, limit, offset)
-    return jsonify({"events": events, "count": len(events), "filters": filters})
+
+    # Calcular estadísticas de los resultados
+    stats = {
+        "total": len(events),
+        "unique_users": len(set(e.get('username') for e in events if e.get('username'))),
+        "unique_repos": len(set(e.get('repo_name') for e in events if e.get('repo_name')))
+    }
+
+    return jsonify({"events": events, "count": len(events), "filters": filters, "stats": stats})
 
 
 @app.route('/api/db/stats')
