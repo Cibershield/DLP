@@ -137,11 +137,99 @@ class GitHubIntegration:
         """
         clones = self._make_request(f"/repos/{owner}/{repo}/traffic/clones")
         views = self._make_request(f"/repos/{owner}/{repo}/traffic/views")
+        referrers = self._make_request(f"/repos/{owner}/{repo}/traffic/popular/referrers")
+        paths = self._make_request(f"/repos/{owner}/{repo}/traffic/popular/paths")
 
         return {
-            "clones": clones if clones and "error" not in clones else {"count": 0, "uniques": 0},
-            "views": views if views and "error" not in views else {"count": 0, "uniques": 0}
+            "clones": clones if clones and "error" not in clones else {"count": 0, "uniques": 0, "clones": []},
+            "views": views if views and "error" not in views else {"count": 0, "uniques": 0, "views": []},
+            "referrers": referrers if referrers and "error" not in referrers else [],
+            "paths": paths if paths and "error" not in paths else []
         }
+
+    def get_org_traffic_summary(self, org: str) -> Dict:
+        """
+        Obtiene estadísticas de tráfico de todos los repositorios de una organización.
+        Requiere permisos de admin o push en los repos.
+
+        Returns:
+            Dict con resumen de tráfico por repositorio
+        """
+        repos = self.get_org_repos(org)
+        traffic_data = {
+            "organization": org,
+            "timestamp": datetime.now().isoformat(),
+            "total_repos": len(repos),
+            "total_clones": 0,
+            "total_unique_cloners": 0,
+            "total_views": 0,
+            "total_unique_visitors": 0,
+            "repos_with_traffic": [],
+            "daily_clones": {},
+            "top_cloned_repos": [],
+            "errors": []
+        }
+
+        for repo in repos:
+            repo_name = repo.get("name")
+            full_name = repo.get("full_name", f"{org}/{repo_name}")
+
+            try:
+                traffic = self.get_repo_traffic(org, repo_name)
+
+                clones_data = traffic.get("clones", {})
+                views_data = traffic.get("views", {})
+
+                clone_count = clones_data.get("count", 0)
+                unique_cloners = clones_data.get("uniques", 0)
+                view_count = views_data.get("count", 0)
+                unique_visitors = views_data.get("uniques", 0)
+
+                # Solo incluir repos con actividad
+                if clone_count > 0 or view_count > 0:
+                    repo_traffic = {
+                        "name": repo_name,
+                        "full_name": full_name,
+                        "url": repo.get("url"),
+                        "private": repo.get("private"),
+                        "clones": clone_count,
+                        "unique_cloners": unique_cloners,
+                        "views": view_count,
+                        "unique_visitors": unique_visitors,
+                        "daily_clones": clones_data.get("clones", []),
+                        "daily_views": views_data.get("views", []),
+                        "referrers": traffic.get("referrers", []),
+                        "popular_paths": traffic.get("paths", [])
+                    }
+                    traffic_data["repos_with_traffic"].append(repo_traffic)
+
+                    # Agregar clones diarios al total
+                    for daily in clones_data.get("clones", []):
+                        date = daily.get("timestamp", "")[:10]
+                        if date not in traffic_data["daily_clones"]:
+                            traffic_data["daily_clones"][date] = {"count": 0, "uniques": 0}
+                        traffic_data["daily_clones"][date]["count"] += daily.get("count", 0)
+                        traffic_data["daily_clones"][date]["uniques"] += daily.get("uniques", 0)
+
+                traffic_data["total_clones"] += clone_count
+                traffic_data["total_unique_cloners"] += unique_cloners
+                traffic_data["total_views"] += view_count
+                traffic_data["total_unique_visitors"] += unique_visitors
+
+            except Exception as e:
+                traffic_data["errors"].append({"repo": repo_name, "error": str(e)})
+
+        # Ordenar repos por clones (top cloned)
+        traffic_data["repos_with_traffic"].sort(key=lambda x: x.get("clones", 0), reverse=True)
+        traffic_data["top_cloned_repos"] = traffic_data["repos_with_traffic"][:10]
+
+        # Convertir daily_clones a lista ordenada
+        traffic_data["daily_clones_list"] = [
+            {"date": date, **data}
+            for date, data in sorted(traffic_data["daily_clones"].items())
+        ]
+
+        return traffic_data
 
     def add_collaborator(self, owner: str, repo: str, username: str, permission: str = "push") -> Dict:
         """

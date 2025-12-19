@@ -1026,6 +1026,7 @@ DASHBOARD_HTML = """
         <button class="nav-tab" onclick="switchTab('history')">📊 Historial</button>
         <button class="nav-tab" onclick="switchTab('repositories')">📦 Repositorios DLP</button>
         <button class="nav-tab" onclick="switchTab('organization')">🏢 Organización GitHub</button>
+        <button class="nav-tab" onclick="switchTab('traffic')">📈 Clones/Tráfico</button>
         <button class="nav-tab" onclick="switchTab('agents')">🖥️ Agentes DLP</button>
         <button class="nav-tab" onclick="switchTab('unauthorized')">🚨 Accesos No Autorizados <span id="unauthorized-badge" class="count-badge" style="display:none;">0</span></button>
     </div>
@@ -1103,6 +1104,79 @@ DASHBOARD_HTML = """
         </div>
         <div id="org-repos-grid" class="repo-grid">
             <p style="color: #666; grid-column: 1/-1; text-align: center; padding: 40px;">Ingrese el nombre de una organización para ver sus repositorios.</p>
+        </div>
+    </div>
+    </div>
+
+    <!-- Tab: Traffic Statistics -->
+    <div id="tab-traffic" class="tab-content">
+    <div class="main-content">
+        <div class="section-header">
+            <h2>📈 Estadísticas de Clones y Tráfico</h2>
+        </div>
+        <p style="color: #888; margin-bottom: 15px;">Estadísticas de clones y visitas de los últimos 14 días (datos de GitHub Traffic API).</p>
+
+        <div style="margin-bottom: 20px;">
+            <input type="text" id="traffic-org-input" placeholder="Nombre de la organización (ej: Delfix-CR)"
+                   style="padding: 10px 15px; border: 1px solid #333; background: #1a1a2e; color: #e0e0e0; border-radius: 6px; width: 300px; margin-right: 10px;">
+            <button onclick="fetchTrafficStats()" style="padding: 10px 20px; background: #00d4ff; color: #000; border: none; border-radius: 6px; cursor: pointer; font-weight: 600;">Cargar Estadísticas</button>
+        </div>
+
+        <!-- Stats Summary -->
+        <div id="traffic-summary" style="display: none; margin-bottom: 20px;">
+            <div style="display: grid; grid-template-columns: repeat(auto-fit, minmax(150px, 1fr)); gap: 15px;">
+                <div class="stat-card">
+                    <div class="stat-value" id="traffic-total-clones">0</div>
+                    <div class="stat-label">Total Clones</div>
+                </div>
+                <div class="stat-card success">
+                    <div class="stat-value" id="traffic-unique-cloners">0</div>
+                    <div class="stat-label">Clonadores Únicos</div>
+                </div>
+                <div class="stat-card network">
+                    <div class="stat-value" id="traffic-total-views">0</div>
+                    <div class="stat-label">Total Visitas</div>
+                </div>
+                <div class="stat-card metric">
+                    <div class="stat-value" id="traffic-unique-visitors">0</div>
+                    <div class="stat-label">Visitantes Únicos</div>
+                </div>
+            </div>
+        </div>
+
+        <!-- Daily Chart -->
+        <div id="traffic-daily-chart" style="display: none; background: #1a1a2e; padding: 20px; border-radius: 10px; margin-bottom: 20px;">
+            <h3 style="color: #00d4ff; margin-bottom: 15px;">Clones por Día (últimos 14 días)</h3>
+            <div id="daily-chart-bars" style="display: flex; align-items: flex-end; gap: 8px; height: 150px; padding: 10px 0;"></div>
+        </div>
+
+        <!-- Top Repos Table -->
+        <div id="traffic-repos-section" style="display: none;">
+            <h3 style="color: #00d4ff; margin-bottom: 15px;">Repositorios con más Clones</h3>
+            <table class="events-table">
+                <thead>
+                    <tr>
+                        <th>Repositorio</th>
+                        <th>Tipo</th>
+                        <th>Clones</th>
+                        <th>Clonadores</th>
+                        <th>Visitas</th>
+                        <th>Visitantes</th>
+                    </tr>
+                </thead>
+                <tbody id="traffic-repos-body">
+                </tbody>
+            </table>
+        </div>
+
+        <!-- Loading/Error -->
+        <div id="traffic-loading" style="display: none; text-align: center; padding: 40px; color: #00d4ff;">
+            Cargando estadísticas...
+        </div>
+        <div id="traffic-error" style="display: none; text-align: center; padding: 40px; color: #ff4757;">
+        </div>
+        <div id="traffic-empty" style="text-align: center; padding: 40px; color: #666;">
+            Ingrese el nombre de una organización para ver las estadísticas de tráfico.
         </div>
     </div>
     </div>
@@ -1287,20 +1361,6 @@ DASHBOARD_HTML = """
         // Verificar auth al cargar
         checkAuthStatus();
 
-        function switchTab(tabName) {
-            currentTab = tabName;
-            document.querySelectorAll('.nav-tab').forEach(btn => btn.classList.remove('active'));
-            document.querySelectorAll('.tab-content').forEach(tab => tab.classList.remove('active'));
-            event.target.classList.add('active');
-            document.getElementById('tab-' + tabName).classList.add('active');
-
-            // Cargar datos de la pestaña
-            if (tabName === 'repositories') fetchRepositories();
-            if (tabName === 'agents') fetchDLPAgents();
-            if (tabName === 'unauthorized') fetchUnauthorized();
-            // organization se carga manualmente con el botón
-        }
-        
         function formatTime(isoString) {
             const date = new Date(isoString);
             return date.toLocaleTimeString('es-ES', { 
@@ -2297,6 +2357,136 @@ DASHBOARD_HTML = """
             link.download = 'historial_dlp_' + new Date().toISOString().slice(0,10) + '.csv';
             link.click();
         }
+
+        // ============================================
+        // Traffic Statistics Functions
+        // ============================================
+        let trafficData = null;
+
+        async function fetchTrafficStats() {
+            const orgName = document.getElementById('traffic-org-input').value.trim();
+            if (!orgName) {
+                alert('Ingrese el nombre de la organización');
+                return;
+            }
+
+            // Mostrar loading
+            document.getElementById('traffic-loading').style.display = 'block';
+            document.getElementById('traffic-empty').style.display = 'none';
+            document.getElementById('traffic-error').style.display = 'none';
+            document.getElementById('traffic-summary').style.display = 'none';
+            document.getElementById('traffic-daily-chart').style.display = 'none';
+            document.getElementById('traffic-repos-section').style.display = 'none';
+
+            try {
+                const response = await fetch('/api/github/org/' + encodeURIComponent(orgName) + '/traffic');
+                const data = await response.json();
+
+                document.getElementById('traffic-loading').style.display = 'none';
+
+                if (data.error) {
+                    document.getElementById('traffic-error').textContent = 'Error: ' + data.error;
+                    document.getElementById('traffic-error').style.display = 'block';
+                    return;
+                }
+
+                trafficData = data;
+                renderTrafficStats();
+            } catch (error) {
+                document.getElementById('traffic-loading').style.display = 'none';
+                document.getElementById('traffic-error').textContent = 'Error de conexión: ' + error.message;
+                document.getElementById('traffic-error').style.display = 'block';
+            }
+        }
+
+        function renderTrafficStats() {
+            if (!trafficData) return;
+
+            // Mostrar resumen
+            document.getElementById('traffic-total-clones').textContent = trafficData.total_clones || 0;
+            document.getElementById('traffic-unique-cloners').textContent = trafficData.total_unique_cloners || 0;
+            document.getElementById('traffic-total-views').textContent = trafficData.total_views || 0;
+            document.getElementById('traffic-unique-visitors').textContent = trafficData.total_unique_visitors || 0;
+            document.getElementById('traffic-summary').style.display = 'block';
+
+            // Gráfica de clones diarios
+            const dailyData = trafficData.daily_clones_list || [];
+            if (dailyData.length > 0) {
+                const maxCount = Math.max(...dailyData.map(d => d.count), 1);
+                const chartHtml = dailyData.map(d => {
+                    const height = Math.max((d.count / maxCount) * 120, 5);
+                    const date = d.date.slice(5); // MM-DD
+                    return `
+                        <div style="display: flex; flex-direction: column; align-items: center; flex: 1;">
+                            <div style="background: linear-gradient(to top, #00d4ff, #00ff88); width: 100%; height: ${height}px; border-radius: 4px 4px 0 0; min-width: 20px;" title="${d.count} clones"></div>
+                            <div style="font-size: 0.7rem; color: #888; margin-top: 5px; writing-mode: vertical-rl; transform: rotate(180deg);">${date}</div>
+                            <div style="font-size: 0.75rem; color: #00d4ff; font-weight: bold;">${d.count}</div>
+                        </div>
+                    `;
+                }).join('');
+                document.getElementById('daily-chart-bars').innerHTML = chartHtml;
+                document.getElementById('traffic-daily-chart').style.display = 'block';
+            }
+
+            // Tabla de repos
+            const repos = trafficData.repos_with_traffic || [];
+            if (repos.length > 0) {
+                const tbody = document.getElementById('traffic-repos-body');
+                tbody.innerHTML = repos.map(r => `
+                    <tr>
+                        <td><a href="${r.url}" target="_blank" class="repo-link">${r.name}</a></td>
+                        <td><span class="${r.private ? 'badge blocked' : 'badge allowed'}">${r.private ? 'Privado' : 'Público'}</span></td>
+                        <td style="font-weight: bold; color: #00d4ff;">${r.clones}</td>
+                        <td>${r.unique_cloners}</td>
+                        <td>${r.views}</td>
+                        <td>${r.unique_visitors}</td>
+                    </tr>
+                `).join('');
+                document.getElementById('traffic-repos-section').style.display = 'block';
+            }
+        }
+
+        // Permitir Enter en el input de tráfico
+        document.addEventListener('DOMContentLoaded', function() {
+            const trafficInput = document.getElementById('traffic-org-input');
+            if (trafficInput) {
+                trafficInput.addEventListener('keypress', function(e) {
+                    if (e.key === 'Enter') fetchTrafficStats();
+                });
+            }
+        });
+
+        // ============================================
+        // Preload Organization on Tab Switch
+        // ============================================
+        const DEFAULT_ORG = 'Delfix-CR';
+
+        function switchTab(tabName) {
+            currentTab = tabName;
+            document.querySelectorAll('.nav-tab').forEach(btn => btn.classList.remove('active'));
+            document.querySelectorAll('.tab-content').forEach(tab => tab.classList.remove('active'));
+            event.target.classList.add('active');
+            document.getElementById('tab-' + tabName).classList.add('active');
+
+            // Cargar datos de la pestaña
+            if (tabName === 'repositories') fetchRepositories();
+            if (tabName === 'agents') fetchDLPAgents();
+            if (tabName === 'unauthorized') fetchUnauthorized();
+            if (tabName === 'organization') {
+                // Precargar organización por defecto si no hay datos
+                if (orgReposData.length === 0) {
+                    document.getElementById('org-name-input').value = DEFAULT_ORG;
+                    fetchOrganization();
+                }
+            }
+            if (tabName === 'traffic') {
+                // Precargar organización por defecto si no hay datos
+                if (!trafficData) {
+                    document.getElementById('traffic-org-input').value = DEFAULT_ORG;
+                    fetchTrafficStats();
+                }
+            }
+        }
     </script>
 </body>
 </html>
@@ -2676,6 +2866,38 @@ def api_update_collaborator_permission(org, repo, username):
 
     result = github_api.update_collaborator_permission(org, repo, username, permission)
     return jsonify(result)
+
+
+# ============== GitHub Traffic Statistics Endpoints ==============
+
+@app.route('/api/github/org/<org>/traffic')
+def api_org_traffic(org):
+    """API endpoint para obtener estadísticas de tráfico de la organización"""
+    if not github_api or not github_api.is_configured():
+        return jsonify({"error": "GitHub API not configured. Set GITHUB_TOKEN environment variable."})
+
+    try:
+        traffic_data = github_api.get_org_traffic_summary(org)
+        return jsonify(traffic_data)
+    except Exception as e:
+        logger.error(f"Error obteniendo tráfico de {org}: {e}")
+        return jsonify({"error": str(e)}), 500
+
+
+@app.route('/api/github/repo/<owner>/<repo>/traffic')
+def api_repo_traffic(owner, repo):
+    """API endpoint para obtener estadísticas de tráfico de un repositorio específico"""
+    if not github_api or not github_api.is_configured():
+        return jsonify({"error": "GitHub API not configured. Set GITHUB_TOKEN environment variable."})
+
+    try:
+        traffic_data = github_api.get_repo_traffic(owner, repo)
+        traffic_data["repo"] = f"{owner}/{repo}"
+        traffic_data["timestamp"] = datetime.now().isoformat()
+        return jsonify(traffic_data)
+    except Exception as e:
+        logger.error(f"Error obteniendo tráfico de {owner}/{repo}: {e}")
+        return jsonify({"error": str(e)}), 500
 
 
 # ============== GitHub Webhook Endpoints ==============
