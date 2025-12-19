@@ -22,6 +22,8 @@ services:
       - TZ=America/Costa_Rica
       # GitHub API (para gestión de repositorios)
       - GITHUB_TOKEN=ghp_xxxxx
+      # GitHub Webhook Secret (para detectar actividad no autorizada)
+      - GITHUB_WEBHOOK_SECRET=
       # Microsoft Entra (Azure AD) - dejar vacío para deshabilitar
       - MICROSOFT_CLIENT_ID=
       - MICROSOFT_CLIENT_SECRET=

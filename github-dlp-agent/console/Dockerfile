@@ -25,6 +25,7 @@ RUN pip install --no-cache-dir -r requirements-console.txt
 # Copiar código de la consola
 COPY dlp_console.py .
 COPY github_integration.py .
+COPY github_webhook.py .
 COPY auth.py .
 
 # Crear directorio para datos

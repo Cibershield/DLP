@@ -1125,7 +1125,7 @@ DASHBOARD_HTML = """
         <div class="section-header">
             <h2>🚨 Accesos desde Equipos Sin Agente DLP</h2>
         </div>
-        <p style="color: #888; margin-bottom: 15px;">Clones de repositorios detectados desde equipos que no tienen el agente DLP instalado.</p>
+        <p style="color: #888; margin-bottom: 15px;">Actividad detectada desde equipos sin agente DLP: clones, pushes, y cualquier operación Git desde terminal, IDE, o cualquier herramienta.</p>
         <div class="unauthorized-list" id="unauthorized-list">
             <p style="color: #666;">No se han detectado accesos no autorizados.</p>
         </div>
@@ -1563,19 +1563,33 @@ DASHBOARD_HTML = """
                 return;
             }
 
-            list.innerHTML = unauthorizedData.map(item => `
-                <div class="unauthorized-item">
-                    <div class="details">
-                        <span class="repo">📦 ${item.repo_name}</span>
-                        <div class="info">
-                            👤 ${item.username || 'unknown'} desde
-                            <strong>${item.hostname || 'desconocido'}</strong>
-                            (${item.source_ip || 'IP desconocida'})
+            list.innerHTML = unauthorizedData.map(item => {
+                const isWebhook = item.source === 'github_webhook';
+                const sourceIcon = isWebhook ? '🌐' : '🖥️';
+                const sourceLabel = isWebhook ? 'GitHub Webhook' : 'Agente DLP';
+                const eventType = item.event_type === 'push' ? '📤 Push' : '📥 Clone';
+
+                return `
+                    <div class="unauthorized-item">
+                        <div class="details">
+                            <span class="repo">${eventType} ${item.repo_name}</span>
+                            <div class="info">
+                                👤 ${item.username || 'unknown'}
+                                ${!isWebhook ? ` desde <strong>${item.hostname || 'desconocido'}</strong> (${item.source_ip || 'IP desconocida'})` : ''}
+                                ${item.email ? ` - ${item.email}` : ''}
+                                ${item.commits_count ? ` - ${item.commits_count} commits` : ''}
+                            </div>
+                            <div style="margin-top: 5px;">
+                                <span style="background: ${isWebhook ? '#ffa502' : '#a29bfe'}; color: #000; padding: 2px 8px; border-radius: 10px; font-size: 0.7rem;">
+                                    ${sourceIcon} ${sourceLabel}
+                                </span>
+                                ${item.message ? `<span style="color: #888; font-size: 0.75rem; margin-left: 10px;">${item.message}</span>` : ''}
+                            </div>
                         </div>
+                        <div class="time">${formatDateTime(item.timestamp)}</div>
                     </div>
-                    <div class="time">${formatDateTime(item.timestamp)}</div>
-                </div>
-            `).join('');
+                `;
+            }).join('');
         }
 
         function formatDateTime(isoString) {
@@ -1872,6 +1886,16 @@ except Exception as e:
     github_api = None
     logger.error(f"Error cargando github_integration: {e}")
 
+# Importar webhook handler
+try:
+    from github_webhook import webhook_handler
+    WEBHOOK_ENABLED = True
+    logger.info("✓ GitHub Webhook handler habilitado")
+except ImportError as e:
+    WEBHOOK_ENABLED = False
+    webhook_handler = None
+    logger.warning(f"GitHub Webhook deshabilitado: {e}")
+
 
 def tcp_receiver():
     """Recibe eventos de los agentes via TCP"""
@@ -2086,11 +2110,25 @@ def api_agents():
 
 @app.route('/api/unauthorized')
 def api_unauthorized():
-    """API endpoint para clones no autorizados"""
-    if not REPO_TRACKING_ENABLED or not repo_tracker:
-        return jsonify({"unauthorized": []})
+    """API endpoint para clones no autorizados (incluye datos de webhook)"""
+    unauthorized = []
 
-    return jsonify({"unauthorized": repo_tracker.get_unauthorized_clones()})
+    # Obtener clones no autorizados desde agentes DLP
+    if REPO_TRACKING_ENABLED and repo_tracker:
+        for item in repo_tracker.get_unauthorized_clones():
+            item["source"] = "dlp_agent"
+            unauthorized.append(item)
+
+    # Obtener pushes no autorizados desde webhook de GitHub
+    if WEBHOOK_ENABLED and webhook_handler:
+        for item in webhook_handler.get_unauthorized_pushes():
+            item["source"] = "github_webhook"
+            unauthorized.append(item)
+
+    # Ordenar por timestamp
+    unauthorized.sort(key=lambda x: x.get("timestamp", ""), reverse=True)
+
+    return jsonify({"unauthorized": unauthorized})
 
 
 @app.route('/api/github/repo/<owner>/<repo>')
@@ -2183,6 +2221,81 @@ def api_update_collaborator_permission(org, repo, username):
 
     result = github_api.update_collaborator_permission(org, repo, username, permission)
     return jsonify(result)
+
+
+# ============== GitHub Webhook Endpoints ==============
+
+@app.route('/webhook/github', methods=['POST'])
+def github_webhook():
+    """Endpoint para recibir webhooks de GitHub"""
+    if not WEBHOOK_ENABLED or not webhook_handler:
+        return jsonify({"error": "Webhook handler not enabled"}), 503
+
+    from flask import request
+
+    # Verificar firma del webhook
+    signature = request.headers.get('X-Hub-Signature-256') or request.headers.get('X-Hub-Signature')
+    if not webhook_handler.verify_signature(request.data, signature):
+        logger.warning("🚨 Webhook con firma inválida rechazado")
+        return jsonify({"error": "Invalid signature"}), 401
+
+    # Obtener tipo de evento
+    event_type = request.headers.get('X-GitHub-Event', 'unknown')
+
+    # Obtener IP de origen
+    source_ip = request.headers.get('X-Forwarded-For', request.remote_addr)
+    if source_ip and ',' in source_ip:
+        source_ip = source_ip.split(',')[0].strip()
+
+    # Procesar evento
+    try:
+        payload = request.get_json()
+        result = webhook_handler.process_webhook(event_type, payload, source_ip)
+        logger.info(f"📨 Webhook recibido: {event_type} - Autorizado: {result.get('is_authorized', 'N/A')}")
+        return jsonify(result)
+    except Exception as e:
+        logger.error(f"Error procesando webhook: {e}")
+        return jsonify({"error": str(e)}), 500
+
+
+@app.route('/api/webhook/stats')
+def api_webhook_stats():
+    """API endpoint para estadísticas de webhooks"""
+    if not WEBHOOK_ENABLED or not webhook_handler:
+        return jsonify({"enabled": False})
+
+    stats = webhook_handler.get_stats()
+    stats["enabled"] = True
+    return jsonify(stats)
+
+
+@app.route('/api/webhook/events')
+def api_webhook_events():
+    """API endpoint para ver eventos de webhook recientes"""
+    if not WEBHOOK_ENABLED or not webhook_handler:
+        return jsonify({"events": []})
+
+    return jsonify({"events": webhook_handler.get_webhook_events(100)})
+
+
+@app.route('/api/webhook/register-user', methods=['POST'])
+def api_register_github_user():
+    """Registra un usuario de GitHub asociado a un agente DLP"""
+    if not WEBHOOK_ENABLED or not webhook_handler:
+        return jsonify({"error": "Webhook handler not enabled"}), 503
+
+    from flask import request
+    data = request.get_json() or {}
+
+    hostname = data.get('hostname')
+    ip = data.get('ip')
+    github_user = data.get('github_user')
+
+    if not all([hostname, ip, github_user]):
+        return jsonify({"error": "Se requieren hostname, ip y github_user"}), 400
+
+    webhook_handler.register_github_user(hostname, ip, github_user)
+    return jsonify({"success": True, "message": f"Usuario {github_user} registrado para {hostname}"})
 
 
 def main():
