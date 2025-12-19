@@ -127,6 +127,47 @@ class DLPDatabase:
             cursor.execute('CREATE INDEX IF NOT EXISTS idx_webhook_timestamp ON webhook_events(timestamp)')
             cursor.execute('CREATE INDEX IF NOT EXISTS idx_webhook_user ON webhook_events(github_user)')
 
+            # Tabla de histórico de tráfico (clones/views de GitHub API)
+            cursor.execute('''
+                CREATE TABLE IF NOT EXISTS traffic_history (
+                    id INTEGER PRIMARY KEY AUTOINCREMENT,
+                    date DATE NOT NULL,
+                    organization TEXT NOT NULL,
+                    repo_name TEXT NOT NULL,
+                    repo_url TEXT,
+                    is_private BOOLEAN DEFAULT 0,
+                    clones INTEGER DEFAULT 0,
+                    unique_cloners INTEGER DEFAULT 0,
+                    views INTEGER DEFAULT 0,
+                    unique_visitors INTEGER DEFAULT 0,
+                    collaborators TEXT,
+                    is_weekend BOOLEAN DEFAULT 0,
+                    created_at DATETIME DEFAULT CURRENT_TIMESTAMP,
+                    UNIQUE(date, organization, repo_name)
+                )
+            ''')
+
+            # Tabla de alertas de acceso (fines de semana, fuera de horario, etc)
+            cursor.execute('''
+                CREATE TABLE IF NOT EXISTS access_alerts (
+                    id INTEGER PRIMARY KEY AUTOINCREMENT,
+                    date DATE NOT NULL,
+                    organization TEXT,
+                    repo_name TEXT NOT NULL,
+                    alert_type TEXT NOT NULL,
+                    clones INTEGER DEFAULT 0,
+                    message TEXT,
+                    collaborators TEXT,
+                    created_at DATETIME DEFAULT CURRENT_TIMESTAMP
+                )
+            ''')
+
+            # Índices para histórico de tráfico
+            cursor.execute('CREATE INDEX IF NOT EXISTS idx_traffic_date ON traffic_history(date)')
+            cursor.execute('CREATE INDEX IF NOT EXISTS idx_traffic_org ON traffic_history(organization)')
+            cursor.execute('CREATE INDEX IF NOT EXISTS idx_traffic_repo ON traffic_history(repo_name)')
+            cursor.execute('CREATE INDEX IF NOT EXISTS idx_alerts_date ON access_alerts(date)')
+
             logger.info(f"✓ Base de datos inicializada: {self.db_path}")
 
     # ============== Eventos DLP ==============
@@ -490,6 +531,224 @@ class DLPDatabase:
                 'total_events': len(events),
                 'users': users,
                 'recent_events': events
+            }
+
+    # ============== Histórico de Tráfico ==============
+
+    def save_traffic_data(self, organization: str, traffic_entries: List[Dict]):
+        """
+        Guarda datos de tráfico de GitHub en el histórico.
+        Solo guarda si no existen ya (evita duplicados).
+        """
+        with self.get_connection() as conn:
+            cursor = conn.cursor()
+
+            saved_count = 0
+            for entry in traffic_entries:
+                try:
+                    cursor.execute('''
+                        INSERT OR IGNORE INTO traffic_history
+                        (date, organization, repo_name, repo_url, is_private,
+                         clones, unique_cloners, views, unique_visitors,
+                         collaborators, is_weekend)
+                        VALUES (?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?)
+                    ''', (
+                        entry.get('date'),
+                        organization,
+                        entry.get('repo_name'),
+                        entry.get('repo_url'),
+                        entry.get('is_private', False),
+                        entry.get('clones', 0),
+                        entry.get('unique_cloners', 0),
+                        entry.get('views', 0),
+                        entry.get('unique_visitors', 0),
+                        json.dumps(entry.get('collaborators', [])),
+                        entry.get('is_weekend', False)
+                    ))
+                    if cursor.rowcount > 0:
+                        saved_count += 1
+                except Exception as e:
+                    logger.error(f"Error guardando tráfico: {e}")
+
+            logger.info(f"✓ Guardados {saved_count} nuevos registros de tráfico para {organization}")
+            return saved_count
+
+    def save_access_alert(self, alert_data: Dict):
+        """Guarda una alerta de acceso (fin de semana, fuera de horario, etc)"""
+        with self.get_connection() as conn:
+            cursor = conn.cursor()
+
+            cursor.execute('''
+                INSERT INTO access_alerts
+                (date, organization, repo_name, alert_type, clones, message, collaborators)
+                VALUES (?, ?, ?, ?, ?, ?, ?)
+            ''', (
+                alert_data.get('date'),
+                alert_data.get('organization'),
+                alert_data.get('repo_name'),
+                alert_data.get('alert_type'),
+                alert_data.get('clones', 0),
+                alert_data.get('message'),
+                json.dumps(alert_data.get('collaborators', []))
+            ))
+
+            return cursor.lastrowid
+
+    def get_traffic_history(self, filters: Dict = None, limit: int = 500) -> List[Dict]:
+        """
+        Obtiene histórico de tráfico con filtros.
+        Filtros: organization, repo_name, date_from, date_to, is_weekend
+        """
+        filters = filters or {}
+
+        query = "SELECT * FROM traffic_history WHERE 1=1"
+        params = []
+
+        if filters.get('organization'):
+            query += " AND organization = ?"
+            params.append(filters['organization'])
+
+        if filters.get('repo_name'):
+            query += " AND repo_name LIKE ?"
+            params.append(f"%{filters['repo_name']}%")
+
+        if filters.get('date_from'):
+            query += " AND date >= ?"
+            params.append(filters['date_from'])
+
+        if filters.get('date_to'):
+            query += " AND date <= ?"
+            params.append(filters['date_to'])
+
+        if filters.get('is_weekend') is not None:
+            query += " AND is_weekend = ?"
+            params.append(filters['is_weekend'])
+
+        query += " ORDER BY date DESC LIMIT ?"
+        params.append(limit)
+
+        with self.get_connection() as conn:
+            cursor = conn.cursor()
+            cursor.execute(query, params)
+
+            results = []
+            for row in cursor.fetchall():
+                entry = dict(row)
+                # Parsear collaborators de JSON
+                if entry.get('collaborators'):
+                    try:
+                        entry['collaborators'] = json.loads(entry['collaborators'])
+                    except:
+                        entry['collaborators'] = []
+                results.append(entry)
+
+            return results
+
+    def get_access_alerts(self, filters: Dict = None, limit: int = 100) -> List[Dict]:
+        """Obtiene alertas de acceso con filtros"""
+        filters = filters or {}
+
+        query = "SELECT * FROM access_alerts WHERE 1=1"
+        params = []
+
+        if filters.get('organization'):
+            query += " AND organization = ?"
+            params.append(filters['organization'])
+
+        if filters.get('repo_name'):
+            query += " AND repo_name LIKE ?"
+            params.append(f"%{filters['repo_name']}%")
+
+        if filters.get('date_from'):
+            query += " AND date >= ?"
+            params.append(filters['date_from'])
+
+        if filters.get('date_to'):
+            query += " AND date <= ?"
+            params.append(filters['date_to'])
+
+        if filters.get('alert_type'):
+            query += " AND alert_type = ?"
+            params.append(filters['alert_type'])
+
+        query += " ORDER BY date DESC, created_at DESC LIMIT ?"
+        params.append(limit)
+
+        with self.get_connection() as conn:
+            cursor = conn.cursor()
+            cursor.execute(query, params)
+
+            results = []
+            for row in cursor.fetchall():
+                entry = dict(row)
+                if entry.get('collaborators'):
+                    try:
+                        entry['collaborators'] = json.loads(entry['collaborators'])
+                    except:
+                        entry['collaborators'] = []
+                results.append(entry)
+
+            return results
+
+    def get_traffic_stats(self, organization: str = None, days: int = 365) -> Dict:
+        """Obtiene estadísticas del histórico de tráfico"""
+        since = (datetime.now() - timedelta(days=days)).strftime('%Y-%m-%d')
+
+        with self.get_connection() as conn:
+            cursor = conn.cursor()
+
+            base_filter = "WHERE date >= ?"
+            params = [since]
+
+            if organization:
+                base_filter += " AND organization = ?"
+                params.append(organization)
+
+            # Total de clones
+            cursor.execute(f'SELECT SUM(clones), SUM(unique_cloners) FROM traffic_history {base_filter}', params)
+            row = cursor.fetchone()
+            total_clones = row[0] or 0
+            total_unique = row[1] or 0
+
+            # Clones en fin de semana
+            cursor.execute(f'SELECT SUM(clones) FROM traffic_history {base_filter} AND is_weekend = 1', params)
+            weekend_clones = cursor.fetchone()[0] or 0
+
+            # Repos más clonados
+            cursor.execute(f'''
+                SELECT repo_name, SUM(clones) as total
+                FROM traffic_history
+                {base_filter}
+                GROUP BY repo_name
+                ORDER BY total DESC
+                LIMIT 10
+            ''', params)
+            top_repos = [{'repo': row[0], 'clones': row[1]} for row in cursor.fetchall()]
+
+            # Clones por mes
+            cursor.execute(f'''
+                SELECT strftime('%Y-%m', date) as month, SUM(clones) as total
+                FROM traffic_history
+                {base_filter}
+                GROUP BY month
+                ORDER BY month
+            ''', params)
+            by_month = [{'month': row[0], 'clones': row[1]} for row in cursor.fetchall()]
+
+            # Total de alertas
+            cursor.execute(f'SELECT COUNT(*) FROM access_alerts {base_filter}', params)
+            total_alerts = cursor.fetchone()[0]
+
+            return {
+                'period_days': days,
+                'organization': organization,
+                'total_clones': total_clones,
+                'total_unique_cloners': total_unique,
+                'weekend_clones': weekend_clones,
+                'weekend_percentage': round((weekend_clones / total_clones * 100) if total_clones > 0 else 0, 1),
+                'top_repos': top_repos,
+                'clones_by_month': by_month,
+                'total_alerts': total_alerts
             }
 
 

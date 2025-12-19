@@ -3070,10 +3070,123 @@ def api_access_correlation(org):
 
     try:
         correlation_data = github_api.get_access_correlation(org)
+
+        # Guardar en histórico de base de datos (persistencia permanente)
+        if DATABASE_ENABLED and dlp_db:
+            try:
+                traffic_entries = []
+                by_date = correlation_data.get('by_date', {})
+
+                for date_str, entries in by_date.items():
+                    for entry in entries:
+                        traffic_entries.append({
+                            'date': date_str,
+                            'repo_name': entry.get('repo'),
+                            'repo_url': entry.get('repo_url'),
+                            'is_private': entry.get('private', False),
+                            'clones': entry.get('clones', 0),
+                            'unique_cloners': entry.get('unique_cloners', 0),
+                            'collaborators': entry.get('collaborators', []),
+                            'is_weekend': entry.get('is_weekend', False)
+                        })
+
+                saved = dlp_db.save_traffic_data(org, traffic_entries)
+
+                # Guardar alertas nuevas
+                for alert in correlation_data.get('alerts', []):
+                    dlp_db.save_access_alert({
+                        'date': alert.get('date'),
+                        'organization': org,
+                        'repo_name': alert.get('repo'),
+                        'alert_type': alert.get('type'),
+                        'clones': alert.get('clones', 0),
+                        'message': alert.get('message'),
+                        'collaborators': alert.get('collaborators', [])
+                    })
+
+                correlation_data['saved_to_history'] = saved
+                logger.info(f"✓ Guardados {saved} registros en histórico para {org}")
+            except Exception as e:
+                logger.error(f"Error guardando en histórico: {e}")
+
         return jsonify(correlation_data)
     except Exception as e:
         logger.error(f"Error obteniendo correlación de {org}: {e}")
         return jsonify({"error": str(e)}), 500
+
+
+# ============== Traffic History Endpoints ==============
+
+@app.route('/api/traffic/history')
+def api_traffic_history():
+    """API endpoint para consultar histórico de tráfico (datos guardados permanentemente)"""
+    if not DATABASE_ENABLED or not dlp_db:
+        return jsonify({"error": "Database not enabled"}), 503
+
+    from flask import request
+
+    filters = {}
+    if request.args.get('organization'):
+        filters['organization'] = request.args.get('organization')
+    if request.args.get('repo_name'):
+        filters['repo_name'] = request.args.get('repo_name')
+    if request.args.get('date_from'):
+        filters['date_from'] = request.args.get('date_from')
+    if request.args.get('date_to'):
+        filters['date_to'] = request.args.get('date_to')
+    if request.args.get('is_weekend'):
+        filters['is_weekend'] = request.args.get('is_weekend') == 'true'
+
+    limit = int(request.args.get('limit', 500))
+
+    history = dlp_db.get_traffic_history(filters, limit)
+    return jsonify({
+        "history": history,
+        "count": len(history),
+        "filters": filters
+    })
+
+
+@app.route('/api/traffic/stats')
+def api_traffic_stats():
+    """API endpoint para estadísticas del histórico de tráfico (último año)"""
+    if not DATABASE_ENABLED or not dlp_db:
+        return jsonify({"error": "Database not enabled"}), 503
+
+    from flask import request
+
+    organization = request.args.get('organization')
+    days = int(request.args.get('days', 365))
+
+    stats = dlp_db.get_traffic_stats(organization, days)
+    return jsonify(stats)
+
+
+@app.route('/api/traffic/alerts')
+def api_traffic_alerts():
+    """API endpoint para alertas de acceso (fines de semana, etc)"""
+    if not DATABASE_ENABLED or not dlp_db:
+        return jsonify({"error": "Database not enabled"}), 503
+
+    from flask import request
+
+    filters = {}
+    if request.args.get('organization'):
+        filters['organization'] = request.args.get('organization')
+    if request.args.get('date_from'):
+        filters['date_from'] = request.args.get('date_from')
+    if request.args.get('date_to'):
+        filters['date_to'] = request.args.get('date_to')
+    if request.args.get('alert_type'):
+        filters['alert_type'] = request.args.get('alert_type')
+
+    limit = int(request.args.get('limit', 100))
+
+    alerts = dlp_db.get_access_alerts(filters, limit)
+    return jsonify({
+        "alerts": alerts,
+        "count": len(alerts)
+    })
 
 
 # ============== GitHub Webhook Endpoints ==============
