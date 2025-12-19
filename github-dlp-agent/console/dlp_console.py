@@ -1023,6 +1023,7 @@ DASHBOARD_HTML = """
     <!-- Navigation Tabs -->
     <div class="nav-tabs">
         <button class="nav-tab active" onclick="switchTab('events')">📋 Eventos</button>
+        <button class="nav-tab" onclick="switchTab('history')">📊 Historial</button>
         <button class="nav-tab" onclick="switchTab('repositories')">📦 Repositorios DLP</button>
         <button class="nav-tab" onclick="switchTab('organization')">🏢 Organización GitHub</button>
         <button class="nav-tab" onclick="switchTab('agents')">🖥️ Agentes DLP</button>
@@ -1115,6 +1116,113 @@ DASHBOARD_HTML = """
         <p style="color: #888; margin-bottom: 15px;">Equipos con el agente DLP instalado que han reportado actividad.</p>
         <div class="agents-grid" id="dlp-agents-grid">
             <p style="color: #666;">Cargando agentes...</p>
+        </div>
+    </div>
+    </div>
+
+    <!-- Tab: History -->
+    <div id="tab-history" class="tab-content">
+    <div class="main-content">
+        <div class="section-header">
+            <h2>📊 Historial de Eventos</h2>
+        </div>
+        <p style="color: #888; margin-bottom: 15px;">Consulta el historial completo de eventos con filtros avanzados.</p>
+
+        <!-- Filtros -->
+        <div class="history-filters" style="background: #1a1a2e; padding: 20px; border-radius: 10px; margin-bottom: 20px;">
+            <div style="display: grid; grid-template-columns: repeat(auto-fit, minmax(200px, 1fr)); gap: 15px;">
+                <div>
+                    <label style="color: #888; font-size: 0.8rem; display: block; margin-bottom: 5px;">Fecha Desde</label>
+                    <input type="date" id="filter-date-from" style="width: 100%; padding: 8px; background: #0f0f23; color: #e0e0e0; border: 1px solid #333; border-radius: 5px;">
+                </div>
+                <div>
+                    <label style="color: #888; font-size: 0.8rem; display: block; margin-bottom: 5px;">Fecha Hasta</label>
+                    <input type="date" id="filter-date-to" style="width: 100%; padding: 8px; background: #0f0f23; color: #e0e0e0; border: 1px solid #333; border-radius: 5px;">
+                </div>
+                <div>
+                    <label style="color: #888; font-size: 0.8rem; display: block; margin-bottom: 5px;">Hora Desde</label>
+                    <select id="filter-hour-from" style="width: 100%; padding: 8px; background: #0f0f23; color: #e0e0e0; border: 1px solid #333; border-radius: 5px;">
+                        <option value="">Todas</option>
+                        <option value="0">00:00</option><option value="1">01:00</option><option value="2">02:00</option>
+                        <option value="3">03:00</option><option value="4">04:00</option><option value="5">05:00</option>
+                        <option value="6">06:00</option><option value="7">07:00</option><option value="8">08:00</option>
+                        <option value="9">09:00</option><option value="10">10:00</option><option value="11">11:00</option>
+                        <option value="12">12:00</option><option value="13">13:00</option><option value="14">14:00</option>
+                        <option value="15">15:00</option><option value="16">16:00</option><option value="17">17:00</option>
+                        <option value="18">18:00</option><option value="19">19:00</option><option value="20">20:00</option>
+                        <option value="21">21:00</option><option value="22">22:00</option><option value="23">23:00</option>
+                    </select>
+                </div>
+                <div>
+                    <label style="color: #888; font-size: 0.8rem; display: block; margin-bottom: 5px;">Hora Hasta</label>
+                    <select id="filter-hour-to" style="width: 100%; padding: 8px; background: #0f0f23; color: #e0e0e0; border: 1px solid #333; border-radius: 5px;">
+                        <option value="">Todas</option>
+                        <option value="0">00:00</option><option value="1">01:00</option><option value="2">02:00</option>
+                        <option value="3">03:00</option><option value="4">04:00</option><option value="5">05:00</option>
+                        <option value="6">06:00</option><option value="7">07:00</option><option value="8">08:00</option>
+                        <option value="9">09:00</option><option value="10">10:00</option><option value="11">11:00</option>
+                        <option value="12">12:00</option><option value="13">13:00</option><option value="14">14:00</option>
+                        <option value="15">15:00</option><option value="16">16:00</option><option value="17">17:00</option>
+                        <option value="18">18:00</option><option value="19">19:00</option><option value="20">20:00</option>
+                        <option value="21">21:00</option><option value="22">22:00</option><option value="23">23:00</option>
+                    </select>
+                </div>
+                <div>
+                    <label style="color: #888; font-size: 0.8rem; display: block; margin-bottom: 5px;">Usuario</label>
+                    <input type="text" id="filter-username" placeholder="Nombre de usuario" style="width: 100%; padding: 8px; background: #0f0f23; color: #e0e0e0; border: 1px solid #333; border-radius: 5px;">
+                </div>
+                <div>
+                    <label style="color: #888; font-size: 0.8rem; display: block; margin-bottom: 5px;">Repositorio</label>
+                    <input type="text" id="filter-repo" placeholder="Nombre del repo" style="width: 100%; padding: 8px; background: #0f0f23; color: #e0e0e0; border: 1px solid #333; border-radius: 5px;">
+                </div>
+                <div>
+                    <label style="color: #888; font-size: 0.8rem; display: block; margin-bottom: 5px;">Operación Git</label>
+                    <select id="filter-operation" style="width: 100%; padding: 8px; background: #0f0f23; color: #e0e0e0; border: 1px solid #333; border-radius: 5px;">
+                        <option value="">Todas</option>
+                        <option value="clone">Clone</option>
+                        <option value="push">Push</option>
+                        <option value="pull">Pull</option>
+                        <option value="fetch">Fetch</option>
+                        <option value="commit">Commit</option>
+                    </select>
+                </div>
+                <div>
+                    <label style="color: #888; font-size: 0.8rem; display: block; margin-bottom: 5px;">Límite</label>
+                    <select id="filter-limit" style="width: 100%; padding: 8px; background: #0f0f23; color: #e0e0e0; border: 1px solid #333; border-radius: 5px;">
+                        <option value="50">50 eventos</option>
+                        <option value="100" selected>100 eventos</option>
+                        <option value="200">200 eventos</option>
+                        <option value="500">500 eventos</option>
+                    </select>
+                </div>
+            </div>
+            <div style="margin-top: 15px; display: flex; gap: 10px;">
+                <button onclick="searchHistory()" style="padding: 10px 25px; background: #00d4ff; color: #000; border: none; border-radius: 5px; cursor: pointer; font-weight: 600;">
+                    🔍 Buscar
+                </button>
+                <button onclick="clearFilters()" style="padding: 10px 25px; background: #333; color: #e0e0e0; border: none; border-radius: 5px; cursor: pointer;">
+                    Limpiar Filtros
+                </button>
+                <button onclick="exportHistory()" style="padding: 10px 25px; background: #00ff88; color: #000; border: none; border-radius: 5px; cursor: pointer; font-weight: 600;">
+                    📥 Exportar CSV
+                </button>
+            </div>
+        </div>
+
+        <!-- Estadísticas rápidas -->
+        <div id="history-stats" style="display: grid; grid-template-columns: repeat(auto-fit, minmax(150px, 1fr)); gap: 15px; margin-bottom: 20px;">
+        </div>
+
+        <!-- Resultados -->
+        <div id="history-results">
+            <p style="color: #666; text-align: center; padding: 40px;">Usa los filtros para buscar eventos en el historial.</p>
+        </div>
+
+        <!-- Paginación -->
+        <div id="history-pagination" style="display: none; margin-top: 20px; text-align: center;">
+            <button id="btn-prev-page" onclick="historyPrevPage()" style="padding: 8px 20px; background: #333; color: #e0e0e0; border: none; border-radius: 5px; cursor: pointer; margin-right: 10px;">← Anterior</button>
+            <span id="history-page-info" style="color: #888;"></span>
+            <button id="btn-next-page" onclick="historyNextPage()" style="padding: 8px 20px; background: #333; color: #e0e0e0; border: none; border-radius: 5px; cursor: pointer; margin-left: 10px;">Siguiente →</button>
         </div>
     </div>
     </div>
@@ -1665,51 +1773,6 @@ DASHBOARD_HTML = """
             }
         }
 
-        function filterRepos() {
-            const searchTerm = document.getElementById('repo-search-input').value.toLowerCase();
-            const filtered = orgReposData.filter(repo =>
-                repo.name.toLowerCase().includes(searchTerm) ||
-                (repo.description && repo.description.toLowerCase().includes(searchTerm))
-            );
-            document.getElementById('repo-count').textContent = filtered.length + ' de ' + orgReposData.length + ' repositorios';
-            renderOrgRepos(filtered);
-        }
-
-        function renderOrgRepos(repos) {
-            const reposGrid = document.getElementById('org-repos-grid');
-
-            if (repos.length === 0) {
-                reposGrid.innerHTML = '<p style="color: #666; grid-column: 1/-1; text-align: center; padding: 40px;">No se encontraron repositorios.</p>';
-                return;
-            }
-
-            reposGrid.innerHTML = repos.map((repo, index) => {
-                return `
-                    <div class="repo-card ${repo.private ? '' : 'public'}" id="repo-card-${repo.name}">
-                        <div class="repo-card-header">
-                            <h3><a href="${repo.url}" target="_blank">${repo.name}</a></h3>
-                            <span class="${repo.private ? 'alert-tag' : 'user-tag'}">${repo.private ? '🔒 Privado' : '🌐 Público'}</span>
-                        </div>
-                        <p style="color: #888; font-size: 0.85rem; margin: 10px 0;">${repo.description || 'Sin descripción'}</p>
-                        <div style="display: flex; gap: 15px; font-size: 0.8rem; color: #666; margin-bottom: 10px;">
-                            <span>📅 Creado: ${formatDateTime(repo.created_at)}</span>
-                            <span>🔄 Último push: ${formatDateTime(repo.pushed_at)}</span>
-                        </div>
-                        <div style="font-size: 0.8rem; color: #888; margin-bottom: 10px;">
-                            <span>🌿 Branch: ${repo.default_branch}</span>
-                            ${repo.archived ? '<span style="color: #ff4757; margin-left: 10px;">📦 Archivado</span>' : ''}
-                        </div>
-                        <div class="collab-section" id="collabs-${repo.name}">
-                            <button onclick="loadCollaborators('${currentOrgName}', '${repo.name}')"
-                                    style="padding: 6px 12px; background: #16213e; color: #00d4ff; border: 1px solid #00d4ff; border-radius: 4px; cursor: pointer; font-size: 0.8rem;">
-                                👥 Ver/Gestionar Colaboradores
-                            </button>
-                        </div>
-                    </div>
-                `;
-            }).join('');
-        }
-
         // Permitir Enter en el input
         document.addEventListener('DOMContentLoaded', function() {
             const input = document.getElementById('org-name-input');
@@ -1719,70 +1782,6 @@ DASHBOARD_HTML = """
                 });
             }
         });
-
-        async function loadCollaborators(org, repoName) {
-            const container = document.getElementById('collabs-' + repoName);
-            container.innerHTML = '<span style="color: #00d4ff; font-size: 0.8rem;">⏳ Cargando...</span>';
-
-            try {
-                const response = await fetch('/api/github/org/' + encodeURIComponent(org) + '/repo/' + encodeURIComponent(repoName) + '/collaborators');
-                const data = await response.json();
-
-                if (data.error) {
-                    container.innerHTML = '<span style="color: #ff4757; font-size: 0.8rem;">Error: ' + data.error + '</span>';
-                    return;
-                }
-
-                let collabsHtml = '';
-                if (data.collaborators && data.collaborators.length > 0) {
-                    collabsHtml = data.collaborators.map(c => `
-                        <div class="collab-item" style="display: flex; align-items: center; gap: 8px; margin-bottom: 8px; padding: 8px; background: #16213e; border-radius: 6px;">
-                            <img src="${c.avatar}" alt="${c.username}" style="width: 24px; height: 24px; border-radius: 50%;">
-                            <span style="flex: 1;">${c.username}</span>
-                            <select onchange="updatePermission('${org}', '${repoName}', '${c.username}', this.value)"
-                                    style="padding: 4px 8px; background: #1a1a2e; color: #e0e0e0; border: 1px solid #333; border-radius: 4px; font-size: 0.75rem;">
-                                <option value="pull" ${c.role === 'Read' ? 'selected' : ''}>Read</option>
-                                <option value="triage" ${c.role === 'Triage' ? 'selected' : ''}>Triage</option>
-                                <option value="push" ${c.role === 'Write' ? 'selected' : ''}>Write</option>
-                                <option value="maintain" ${c.role === 'Maintainer' ? 'selected' : ''}>Maintain</option>
-                                <option value="admin" ${c.role === 'Admin' ? 'selected' : ''}>Admin</option>
-                            </select>
-                            <button onclick="removeCollaborator('${org}', '${repoName}', '${c.username}')"
-                                    style="padding: 4px 8px; background: #ff4757; color: white; border: none; border-radius: 4px; cursor: pointer; font-size: 0.75rem;"
-                                    title="Eliminar colaborador">✕</button>
-                        </div>
-                    `).join('');
-                } else {
-                    collabsHtml = '<p style="color: #888; font-size: 0.8rem;">Sin colaboradores directos</p>';
-                }
-
-                container.innerHTML = `
-                    <h4 style="color: #888; font-size: 0.8rem; margin-bottom: 10px;">👥 Colaboradores (${data.collaborators ? data.collaborators.length : 0})</h4>
-                    ${collabsHtml}
-                    <div style="margin-top: 12px; padding-top: 12px; border-top: 1px solid #333;">
-                        <h5 style="color: #888; font-size: 0.75rem; margin-bottom: 8px;">➕ Agregar colaborador:</h5>
-                        <div style="display: flex; gap: 8px; flex-wrap: wrap;">
-                            <input type="text" id="new-collab-${repoName}" placeholder="Usuario GitHub"
-                                   style="padding: 6px 10px; background: #1a1a2e; color: #e0e0e0; border: 1px solid #333; border-radius: 4px; font-size: 0.8rem; width: 150px;">
-                            <select id="new-collab-perm-${repoName}"
-                                    style="padding: 6px 10px; background: #1a1a2e; color: #e0e0e0; border: 1px solid #333; border-radius: 4px; font-size: 0.8rem;">
-                                <option value="pull">Read</option>
-                                <option value="triage">Triage</option>
-                                <option value="push" selected>Write</option>
-                                <option value="maintain">Maintain</option>
-                                <option value="admin">Admin</option>
-                            </select>
-                            <button onclick="addCollaborator('${org}', '${repoName}')"
-                                    style="padding: 6px 12px; background: #00ff88; color: #000; border: none; border-radius: 4px; cursor: pointer; font-size: 0.8rem; font-weight: 600;">
-                                Agregar
-                            </button>
-                        </div>
-                    </div>
-                `;
-            } catch (error) {
-                container.innerHTML = '<span style="color: #ff4757; font-size: 0.8rem;">Error: ' + error.message + '</span>';
-            }
-        }
 
         async function addCollaborator(org, repoName) {
             const username = document.getElementById('new-collab-' + repoName).value.trim();
@@ -1858,6 +1857,445 @@ DASHBOARD_HTML = """
             } catch (error) {
                 alert('Error: ' + error.message);
             }
+        }
+
+        // ============================================
+        // Organization Repos - Sorting and Pagination
+        // ============================================
+        let orgRepoPage = 0;
+        const REPOS_PER_PAGE = 10;
+        let loadingCollaborators = {}; // Lock para evitar doble carga
+
+        function sortOrgRepos(repos) {
+            return repos.sort((a, b) => a.name.toLowerCase().localeCompare(b.name.toLowerCase()));
+        }
+
+        function getAlphabetLetters(repos) {
+            const letters = new Set();
+            repos.forEach(repo => {
+                const firstLetter = repo.name.charAt(0).toUpperCase();
+                if (/[A-Z]/.test(firstLetter)) {
+                    letters.add(firstLetter);
+                } else {
+                    letters.add('#'); // Para repos que empiezan con número o símbolo
+                }
+            });
+            return Array.from(letters).sort();
+        }
+
+        function renderOrgRepos(repos) {
+            const reposGrid = document.getElementById('org-repos-grid');
+
+            if (repos.length === 0) {
+                reposGrid.innerHTML = '<p style="color: #666; grid-column: 1/-1; text-align: center; padding: 40px;">No se encontraron repositorios.</p>';
+                return;
+            }
+
+            // Ordenar alfabéticamente
+            const sortedRepos = sortOrgRepos(repos);
+
+            // Calcular paginación
+            const totalPages = Math.ceil(sortedRepos.length / REPOS_PER_PAGE);
+            if (orgRepoPage >= totalPages) orgRepoPage = 0;
+            const start = orgRepoPage * REPOS_PER_PAGE;
+            const end = start + REPOS_PER_PAGE;
+            const pageRepos = sortedRepos.slice(start, end);
+
+            // Obtener letras del alfabeto disponibles
+            const letters = getAlphabetLetters(sortedRepos);
+
+            // Generar menú alfabético
+            const alphabetMenu = `
+                <div style="grid-column: 1/-1; margin-bottom: 15px; display: flex; flex-wrap: wrap; gap: 5px; justify-content: center;">
+                    ${letters.map(letter => `
+                        <button onclick="jumpToLetter('${letter}')"
+                                style="padding: 6px 12px; background: #16213e; color: #00d4ff; border: 1px solid #333; border-radius: 4px; cursor: pointer; font-weight: bold; min-width: 35px;">
+                            ${letter}
+                        </button>
+                    `).join('')}
+                </div>
+            `;
+
+            // Generar paginación
+            const pagination = `
+                <div style="grid-column: 1/-1; margin-top: 20px; display: flex; justify-content: center; align-items: center; gap: 15px;">
+                    <button onclick="prevOrgRepoPage()" ${orgRepoPage === 0 ? 'disabled' : ''}
+                            style="padding: 8px 20px; background: ${orgRepoPage === 0 ? '#333' : '#00d4ff'}; color: ${orgRepoPage === 0 ? '#666' : '#000'}; border: none; border-radius: 5px; cursor: ${orgRepoPage === 0 ? 'not-allowed' : 'pointer'};">
+                        Anterior
+                    </button>
+                    <span style="color: #888;">Página ${orgRepoPage + 1} de ${totalPages} (${sortedRepos.length} repos)</span>
+                    <button onclick="nextOrgRepoPage()" ${orgRepoPage >= totalPages - 1 ? 'disabled' : ''}
+                            style="padding: 8px 20px; background: ${orgRepoPage >= totalPages - 1 ? '#333' : '#00d4ff'}; color: ${orgRepoPage >= totalPages - 1 ? '#666' : '#000'}; border: none; border-radius: 5px; cursor: ${orgRepoPage >= totalPages - 1 ? 'not-allowed' : 'pointer'};">
+                        Siguiente
+                    </button>
+                </div>
+            `;
+
+            // Renderizar repos de la página actual
+            const reposHtml = pageRepos.map((repo, index) => {
+                return `
+                    <div class="repo-card ${repo.private ? '' : 'public'}" id="repo-card-${repo.name}" data-letter="${repo.name.charAt(0).toUpperCase()}">
+                        <div class="repo-card-header">
+                            <h3><a href="${repo.url}" target="_blank">${repo.name}</a></h3>
+                            <span class="${repo.private ? 'alert-tag' : 'user-tag'}">${repo.private ? 'Privado' : 'Público'}</span>
+                        </div>
+                        <p style="color: #888; font-size: 0.85rem; margin: 10px 0;">${repo.description || 'Sin descripción'}</p>
+                        <div style="display: flex; gap: 15px; font-size: 0.8rem; color: #666; margin-bottom: 10px;">
+                            <span>Creado: ${formatDateTime(repo.created_at)}</span>
+                            <span>Último push: ${formatDateTime(repo.pushed_at)}</span>
+                        </div>
+                        <div style="font-size: 0.8rem; color: #888; margin-bottom: 10px;">
+                            <span>Branch: ${repo.default_branch}</span>
+                            ${repo.archived ? '<span style="color: #ff4757; margin-left: 10px;">Archivado</span>' : ''}
+                        </div>
+                        <div class="collab-section" id="collabs-${repo.name}">
+                            <button onclick="loadCollaborators('${currentOrgName}', '${repo.name}')"
+                                    id="btn-collabs-${repo.name}"
+                                    style="padding: 6px 12px; background: #16213e; color: #00d4ff; border: 1px solid #00d4ff; border-radius: 4px; cursor: pointer; font-size: 0.8rem;">
+                                Ver/Gestionar Colaboradores
+                            </button>
+                        </div>
+                    </div>
+                `;
+            }).join('');
+
+            reposGrid.innerHTML = alphabetMenu + reposHtml + pagination;
+        }
+
+        function prevOrgRepoPage() {
+            if (orgRepoPage > 0) {
+                orgRepoPage--;
+                const searchTerm = document.getElementById('repo-search-input').value.toLowerCase();
+                const filtered = searchTerm ? orgReposData.filter(repo =>
+                    repo.name.toLowerCase().includes(searchTerm) ||
+                    (repo.description && repo.description.toLowerCase().includes(searchTerm))
+                ) : orgReposData;
+                renderOrgRepos(filtered);
+            }
+        }
+
+        function nextOrgRepoPage() {
+            const searchTerm = document.getElementById('repo-search-input').value.toLowerCase();
+            const filtered = searchTerm ? orgReposData.filter(repo =>
+                repo.name.toLowerCase().includes(searchTerm) ||
+                (repo.description && repo.description.toLowerCase().includes(searchTerm))
+            ) : orgReposData;
+            const totalPages = Math.ceil(filtered.length / REPOS_PER_PAGE);
+            if (orgRepoPage < totalPages - 1) {
+                orgRepoPage++;
+                renderOrgRepos(filtered);
+            }
+        }
+
+        function jumpToLetter(letter) {
+            const sortedRepos = sortOrgRepos(orgReposData);
+            let targetIndex = 0;
+
+            for (let i = 0; i < sortedRepos.length; i++) {
+                const repoLetter = sortedRepos[i].name.charAt(0).toUpperCase();
+                const isMatch = (letter === '#' && !/[A-Z]/.test(repoLetter)) || repoLetter === letter;
+                if (isMatch) {
+                    targetIndex = i;
+                    break;
+                }
+            }
+
+            orgRepoPage = Math.floor(targetIndex / REPOS_PER_PAGE);
+            renderOrgRepos(orgReposData);
+        }
+
+        function filterRepos() {
+            orgRepoPage = 0; // Reset to first page when filtering
+            const searchTerm = document.getElementById('repo-search-input').value.toLowerCase();
+            const filtered = orgReposData.filter(repo =>
+                repo.name.toLowerCase().includes(searchTerm) ||
+                (repo.description && repo.description.toLowerCase().includes(searchTerm))
+            );
+            document.getElementById('repo-count').textContent = filtered.length + ' de ' + orgReposData.length + ' repositorios';
+            renderOrgRepos(filtered);
+        }
+
+        // Función loadCollaborators con protección contra doble-click
+        async function loadCollaborators(org, repoName) {
+            // Prevenir doble carga
+            if (loadingCollaborators[repoName]) {
+                return;
+            }
+            loadingCollaborators[repoName] = true;
+
+            const container = document.getElementById('collabs-' + repoName);
+            const btn = document.getElementById('btn-collabs-' + repoName);
+            if (btn) btn.disabled = true;
+
+            container.innerHTML = '<span style="color: #00d4ff; font-size: 0.8rem;">Cargando...</span>';
+
+            try {
+                const response = await fetch('/api/github/org/' + encodeURIComponent(org) + '/repo/' + encodeURIComponent(repoName) + '/collaborators');
+                const data = await response.json();
+
+                if (data.error) {
+                    container.innerHTML = '<span style="color: #ff4757; font-size: 0.8rem;">Error: ' + data.error + '</span>';
+                    loadingCollaborators[repoName] = false;
+                    return;
+                }
+
+                // Limpiar contenido previo completamente
+                container.innerHTML = '';
+
+                let collabsHtml = '';
+                if (data.collaborators && data.collaborators.length > 0) {
+                    // Usar Set para evitar duplicados
+                    const uniqueCollabs = [];
+                    const seenUsernames = new Set();
+                    data.collaborators.forEach(c => {
+                        if (!seenUsernames.has(c.username)) {
+                            seenUsernames.add(c.username);
+                            uniqueCollabs.push(c);
+                        }
+                    });
+
+                    collabsHtml = uniqueCollabs.map(c => `
+                        <div class="collab-item" style="display: flex; align-items: center; gap: 8px; margin-bottom: 8px; padding: 8px; background: #16213e; border-radius: 6px;">
+                            <img src="${c.avatar}" alt="${c.username}" style="width: 24px; height: 24px; border-radius: 50%;">
+                            <span style="flex: 1;">${c.username}</span>
+                            <select onchange="updatePermission('${org}', '${repoName}', '${c.username}', this.value)"
+                                    style="padding: 4px 8px; background: #1a1a2e; color: #e0e0e0; border: 1px solid #333; border-radius: 4px; font-size: 0.75rem;">
+                                <option value="pull" ${c.role === 'Read' ? 'selected' : ''}>Read</option>
+                                <option value="triage" ${c.role === 'Triage' ? 'selected' : ''}>Triage</option>
+                                <option value="push" ${c.role === 'Write' ? 'selected' : ''}>Write</option>
+                                <option value="maintain" ${c.role === 'Maintainer' ? 'selected' : ''}>Maintain</option>
+                                <option value="admin" ${c.role === 'Admin' ? 'selected' : ''}>Admin</option>
+                            </select>
+                            <button onclick="removeCollaborator('${org}', '${repoName}', '${c.username}')"
+                                    style="padding: 4px 8px; background: #ff4757; color: white; border: none; border-radius: 4px; cursor: pointer; font-size: 0.75rem;"
+                                    title="Eliminar colaborador">X</button>
+                        </div>
+                    `).join('');
+                } else {
+                    collabsHtml = '<p style="color: #888; font-size: 0.8rem;">Sin colaboradores directos</p>';
+                }
+
+                container.innerHTML = `
+                    <h4 style="color: #888; font-size: 0.8rem; margin-bottom: 10px;">Colaboradores (${data.collaborators ? data.collaborators.length : 0})</h4>
+                    ${collabsHtml}
+                    <div style="margin-top: 12px; padding-top: 12px; border-top: 1px solid #333;">
+                        <h5 style="color: #888; font-size: 0.75rem; margin-bottom: 8px;">Agregar colaborador:</h5>
+                        <div style="display: flex; gap: 8px; flex-wrap: wrap;">
+                            <input type="text" id="new-collab-${repoName}" placeholder="Usuario GitHub"
+                                   style="padding: 6px 10px; background: #1a1a2e; color: #e0e0e0; border: 1px solid #333; border-radius: 4px; font-size: 0.8rem; width: 150px;">
+                            <select id="new-collab-perm-${repoName}"
+                                    style="padding: 6px 10px; background: #1a1a2e; color: #e0e0e0; border: 1px solid #333; border-radius: 4px; font-size: 0.8rem;">
+                                <option value="pull">Read</option>
+                                <option value="triage">Triage</option>
+                                <option value="push" selected>Write</option>
+                                <option value="maintain">Maintain</option>
+                                <option value="admin">Admin</option>
+                            </select>
+                            <button onclick="addCollaborator('${org}', '${repoName}')"
+                                    style="padding: 6px 12px; background: #00ff88; color: #000; border: none; border-radius: 4px; cursor: pointer; font-size: 0.8rem; font-weight: 600;">
+                                Agregar
+                            </button>
+                        </div>
+                    </div>
+                `;
+            } catch (error) {
+                container.innerHTML = '<span style="color: #ff4757; font-size: 0.8rem;">Error: ' + error.message + '</span>';
+            } finally {
+                loadingCollaborators[repoName] = false;
+            }
+        }
+
+        // ============================================
+        // History Tab Functions
+        // ============================================
+        let historyData = [];
+        let historyPage = 0;
+        const HISTORY_PAGE_SIZE = 50;
+
+        async function searchHistory() {
+            const resultsDiv = document.getElementById('history-results');
+            const statsDiv = document.getElementById('history-stats');
+            const paginationDiv = document.getElementById('history-pagination');
+
+            resultsDiv.innerHTML = '<p style="color: #00d4ff; text-align: center; padding: 40px;">Buscando...</p>';
+            statsDiv.innerHTML = '';
+            paginationDiv.style.display = 'none';
+            historyPage = 0;
+
+            // Recoger filtros
+            const params = new URLSearchParams();
+
+            const dateFrom = document.getElementById('filter-date-from').value;
+            const dateTo = document.getElementById('filter-date-to').value;
+            const hourFrom = document.getElementById('filter-hour-from').value;
+            const hourTo = document.getElementById('filter-hour-to').value;
+            const username = document.getElementById('filter-username').value.trim();
+            const repo = document.getElementById('filter-repo').value.trim();
+            const operation = document.getElementById('filter-operation').value;
+            const limit = document.getElementById('filter-limit').value;
+
+            if (dateFrom) params.append('date_from', dateFrom);
+            if (dateTo) params.append('date_to', dateTo);
+            if (hourFrom) params.append('hour_from', hourFrom);
+            if (hourTo) params.append('hour_to', hourTo);
+            if (username) params.append('username', username);
+            if (repo) params.append('repo_name', repo);
+            if (operation) params.append('git_operation', operation);
+            params.append('limit', limit);
+
+            try {
+                const response = await fetch('/api/db/events?' + params.toString());
+                const data = await response.json();
+
+                if (data.error) {
+                    resultsDiv.innerHTML = '<p style="color: #ff4757; text-align: center; padding: 40px;">Error: ' + data.error + '</p>';
+                    return;
+                }
+
+                historyData = data.events || [];
+
+                // Mostrar estadísticas
+                if (data.stats) {
+                    statsDiv.innerHTML = `
+                        <div class="stat-card">
+                            <div class="stat-value">${data.stats.total || historyData.length}</div>
+                            <div class="stat-label">Total Eventos</div>
+                        </div>
+                        <div class="stat-card success">
+                            <div class="stat-value">${data.stats.unique_users || '-'}</div>
+                            <div class="stat-label">Usuarios</div>
+                        </div>
+                        <div class="stat-card">
+                            <div class="stat-value">${data.stats.unique_repos || '-'}</div>
+                            <div class="stat-label">Repositorios</div>
+                        </div>
+                    `;
+                }
+
+                renderHistoryResults();
+            } catch (error) {
+                resultsDiv.innerHTML = '<p style="color: #ff4757; text-align: center; padding: 40px;">Error de conexión: ' + error.message + '</p>';
+            }
+        }
+
+        function renderHistoryResults() {
+            const resultsDiv = document.getElementById('history-results');
+            const paginationDiv = document.getElementById('history-pagination');
+
+            if (historyData.length === 0) {
+                resultsDiv.innerHTML = '<p style="color: #666; text-align: center; padding: 40px;">No se encontraron eventos con los filtros seleccionados.</p>';
+                paginationDiv.style.display = 'none';
+                return;
+            }
+
+            // Paginación
+            const totalPages = Math.ceil(historyData.length / HISTORY_PAGE_SIZE);
+            const start = historyPage * HISTORY_PAGE_SIZE;
+            const end = start + HISTORY_PAGE_SIZE;
+            const pageData = historyData.slice(start, end);
+
+            // Tabla de resultados
+            resultsDiv.innerHTML = `
+                <table class="events-table">
+                    <thead>
+                        <tr>
+                            <th>Fecha/Hora</th>
+                            <th>Usuario</th>
+                            <th>Operación</th>
+                            <th>Repositorio</th>
+                            <th>Host</th>
+                            <th>IP</th>
+                            <th>Rama</th>
+                        </tr>
+                    </thead>
+                    <tbody>
+                        ${pageData.map(e => `
+                            <tr>
+                                <td class="time-cell">${formatDateTime(e.timestamp)}</td>
+                                <td>${e.username || '-'}</td>
+                                <td><span class="op-badge">${e.git_operation || e.event_type || '-'}</span></td>
+                                <td class="repo-cell">${e.repo_name ? `<a href="https://github.com/${e.repo_name}" target="_blank" class="repo-link">${e.repo_name}</a>` : '-'}</td>
+                                <td>${e.hostname || '-'}</td>
+                                <td class="ip-cell">${e.source_ip || '-'}</td>
+                                <td>${e.branch || '-'}</td>
+                            </tr>
+                        `).join('')}
+                    </tbody>
+                </table>
+            `;
+
+            // Mostrar paginación si hay más de una página
+            if (totalPages > 1) {
+                paginationDiv.style.display = 'block';
+                document.getElementById('history-page-info').textContent = `Página ${historyPage + 1} de ${totalPages} (${historyData.length} eventos)`;
+                document.getElementById('btn-prev-page').disabled = historyPage === 0;
+                document.getElementById('btn-next-page').disabled = historyPage >= totalPages - 1;
+            } else {
+                paginationDiv.style.display = 'none';
+            }
+        }
+
+        function historyPrevPage() {
+            if (historyPage > 0) {
+                historyPage--;
+                renderHistoryResults();
+            }
+        }
+
+        function historyNextPage() {
+            const totalPages = Math.ceil(historyData.length / HISTORY_PAGE_SIZE);
+            if (historyPage < totalPages - 1) {
+                historyPage++;
+                renderHistoryResults();
+            }
+        }
+
+        function clearFilters() {
+            document.getElementById('filter-date-from').value = '';
+            document.getElementById('filter-date-to').value = '';
+            document.getElementById('filter-hour-from').value = '';
+            document.getElementById('filter-hour-to').value = '';
+            document.getElementById('filter-username').value = '';
+            document.getElementById('filter-repo').value = '';
+            document.getElementById('filter-operation').value = '';
+            document.getElementById('filter-limit').value = '100';
+
+            historyData = [];
+            historyPage = 0;
+            document.getElementById('history-results').innerHTML = '<p style="color: #666; text-align: center; padding: 40px;">Usa los filtros para buscar eventos en el historial.</p>';
+            document.getElementById('history-stats').innerHTML = '';
+            document.getElementById('history-pagination').style.display = 'none';
+        }
+
+        function exportHistory() {
+            if (historyData.length === 0) {
+                alert('No hay datos para exportar. Realice una búsqueda primero.');
+                return;
+            }
+
+            // Crear CSV
+            const headers = ['Fecha/Hora', 'Usuario', 'Operación', 'Repositorio', 'Host', 'IP', 'Rama'];
+            const rows = historyData.map(e => [
+                e.timestamp || '',
+                e.username || '',
+                e.git_operation || e.event_type || '',
+                e.repo_name || '',
+                e.hostname || '',
+                e.source_ip || '',
+                e.branch || ''
+            ]);
+
+            let csv = headers.join(',') + '\\n';
+            rows.forEach(row => {
+                csv += row.map(cell => '"' + String(cell).replace(/"/g, '""') + '"').join(',') + '\\n';
+            });
+
+            // Descargar
+            const blob = new Blob([csv], { type: 'text/csv;charset=utf-8;' });
+            const link = document.createElement('a');
+            link.href = URL.createObjectURL(blob);
+            link.download = 'historial_dlp_' + new Date().toISOString().slice(0,10) + '.csv';
+            link.click();
         }
     </script>
 </body>
