@@ -251,6 +251,118 @@ class GitHubIntegration:
 
         return traffic_data
 
+    def get_access_correlation(self, org: str, max_repos: int = 20) -> Dict:
+        """
+        Correlaciona los accesos (clones/views) con los usuarios que tienen permiso.
+        Muestra por cada fecha qué repos tuvieron actividad y quiénes tenían acceso.
+
+        Returns:
+            Dict con correlación de accesos por fecha y repositorio
+        """
+        # Verificar caché (30 minutos)
+        cache_key = f"access_correlation:{org}"
+        if cache_key in self._cache:
+            cached = self._cache[cache_key]
+            if (datetime.now() - cached['time']).seconds < 1800:
+                return cached['data']
+
+        all_repos = self.get_org_repos(org)
+        sorted_repos = sorted(all_repos, key=lambda x: x.get("pushed_at") or "", reverse=True)
+        repos = sorted_repos[:max_repos]
+
+        correlation_data = {
+            "organization": org,
+            "timestamp": datetime.now().isoformat(),
+            "total_repos": len(all_repos),
+            "repos_analyzed": len(repos),
+            "by_date": {},  # fecha -> lista de {repo, clones, collaborators}
+            "by_repo": {},  # repo -> {collaborators, daily_activity}
+            "alerts": []    # Actividad sospechosa (fines de semana, etc)
+        }
+
+        for repo in repos:
+            repo_name = repo.get("name")
+
+            try:
+                # Obtener tráfico
+                traffic = self.get_repo_traffic(org, repo_name)
+                clones_data = traffic.get("clones", {})
+                daily_clones = clones_data.get("clones", [])
+
+                # Solo procesar repos con actividad
+                if not daily_clones:
+                    continue
+
+                # Obtener colaboradores
+                collaborators = self.get_repo_collaborators(org, repo_name)
+                collab_names = [c.get("username") for c in collaborators]
+
+                # Guardar info del repo
+                correlation_data["by_repo"][repo_name] = {
+                    "url": repo.get("url"),
+                    "private": repo.get("private"),
+                    "collaborators": collaborators,
+                    "total_clones": clones_data.get("count", 0),
+                    "daily_activity": daily_clones
+                }
+
+                # Procesar cada día con actividad
+                for daily in daily_clones:
+                    date_str = daily.get("timestamp", "")[:10]
+                    clone_count = daily.get("count", 0)
+                    unique_count = daily.get("uniques", 0)
+
+                    if clone_count == 0:
+                        continue
+
+                    # Detectar fin de semana
+                    is_weekend = False
+                    try:
+                        date_obj = datetime.fromisoformat(date_str)
+                        is_weekend = date_obj.weekday() >= 5  # Sábado=5, Domingo=6
+                    except:
+                        pass
+
+                    if date_str not in correlation_data["by_date"]:
+                        correlation_data["by_date"][date_str] = []
+
+                    entry = {
+                        "repo": repo_name,
+                        "repo_url": repo.get("url"),
+                        "private": repo.get("private"),
+                        "clones": clone_count,
+                        "unique_cloners": unique_count,
+                        "collaborators": collab_names,
+                        "collaborator_count": len(collab_names),
+                        "is_weekend": is_weekend
+                    }
+                    correlation_data["by_date"][date_str].append(entry)
+
+                    # Alerta si es fin de semana
+                    if is_weekend and clone_count > 0:
+                        correlation_data["alerts"].append({
+                            "type": "weekend_activity",
+                            "date": date_str,
+                            "repo": repo_name,
+                            "clones": clone_count,
+                            "message": f"{clone_count} clones en fin de semana",
+                            "collaborators": collab_names
+                        })
+
+            except Exception as e:
+                pass  # Ignorar errores silenciosamente
+
+        # Ordenar fechas (más recientes primero)
+        correlation_data["dates_sorted"] = sorted(
+            correlation_data["by_date"].keys(),
+            reverse=True
+        )
+
+        # Guardar en caché
+        self._cache[cache_key] = {'data': correlation_data, 'time': datetime.now()}
+
+        return correlation_data
+
     def add_collaborator(self, owner: str, repo: str, username: str, permission: str = "push") -> Dict:
         """
         Agrega un colaborador a un repositorio.

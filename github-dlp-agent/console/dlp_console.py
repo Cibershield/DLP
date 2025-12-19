@@ -1027,6 +1027,7 @@ DASHBOARD_HTML = """
         <button class="nav-tab" onclick="switchTab('repositories')">📦 Repositorios DLP</button>
         <button class="nav-tab" onclick="switchTab('organization')">🏢 Organización GitHub</button>
         <button class="nav-tab" onclick="switchTab('traffic')">📈 Clones/Tráfico</button>
+        <button class="nav-tab" onclick="switchTab('correlation')">🔗 Correlación</button>
         <button class="nav-tab" onclick="switchTab('agents')">🖥️ Agentes DLP</button>
         <button class="nav-tab" onclick="switchTab('unauthorized')">🚨 Accesos No Autorizados <span id="unauthorized-badge" class="count-badge" style="display:none;">0</span></button>
     </div>
@@ -1177,6 +1178,57 @@ DASHBOARD_HTML = """
         </div>
         <div id="traffic-empty" style="text-align: center; padding: 40px; color: #666;">
             Ingrese el nombre de una organización para ver las estadísticas de tráfico.
+        </div>
+    </div>
+    </div>
+
+    <!-- Tab: Correlation -->
+    <div id="tab-correlation" class="tab-content">
+    <div class="main-content">
+        <div class="section-header">
+            <h2>🔗 Correlación de Accesos</h2>
+        </div>
+        <p style="color: #888; margin-bottom: 15px;">Correlaciona clones por fecha con los usuarios que tienen acceso a cada repositorio.</p>
+
+        <div style="margin-bottom: 20px;">
+            <input type="text" id="correlation-org-input" placeholder="Nombre de la organización (ej: Delfix-CR)"
+                   style="padding: 10px 15px; border: 1px solid #333; background: #1a1a2e; color: #e0e0e0; border-radius: 6px; width: 300px; margin-right: 10px;">
+            <button onclick="fetchCorrelation()" style="padding: 10px 20px; background: #00d4ff; color: #000; border: none; border-radius: 6px; cursor: pointer; font-weight: 600;">Analizar Correlación</button>
+        </div>
+
+        <!-- Alertas de actividad sospechosa -->
+        <div id="correlation-alerts" style="display: none; margin-bottom: 20px;">
+            <h3 style="color: #ff4757; margin-bottom: 10px;">🚨 Alertas de Actividad</h3>
+            <div id="correlation-alerts-list" style="background: #2a1a1a; padding: 15px; border-radius: 10px; border: 1px solid #ff4757;"></div>
+        </div>
+
+        <!-- Tabla de correlación por fecha -->
+        <div id="correlation-table-section" style="display: none;">
+            <h3 style="color: #00d4ff; margin-bottom: 15px;">Actividad por Fecha</h3>
+            <table class="events-table">
+                <thead>
+                    <tr>
+                        <th>Fecha</th>
+                        <th>Día</th>
+                        <th>Repositorio</th>
+                        <th>Tipo</th>
+                        <th>Clones</th>
+                        <th>Usuarios con Acceso</th>
+                    </tr>
+                </thead>
+                <tbody id="correlation-table-body">
+                </tbody>
+            </table>
+        </div>
+
+        <!-- Loading/Error -->
+        <div id="correlation-loading" style="display: none; text-align: center; padding: 40px; color: #00d4ff;">
+            Analizando correlación de accesos...
+        </div>
+        <div id="correlation-error" style="display: none; text-align: center; padding: 40px; color: #ff4757;">
+        </div>
+        <div id="correlation-empty" style="text-align: center; padding: 40px; color: #666;">
+            Ingrese el nombre de una organización para analizar la correlación de accesos.
         </div>
     </div>
     </div>
@@ -2454,7 +2506,110 @@ DASHBOARD_HTML = """
                     if (e.key === 'Enter') fetchTrafficStats();
                 });
             }
+            const correlationInput = document.getElementById('correlation-org-input');
+            if (correlationInput) {
+                correlationInput.addEventListener('keypress', function(e) {
+                    if (e.key === 'Enter') fetchCorrelation();
+                });
+            }
         });
+
+        // ============================================
+        // Correlation Functions
+        // ============================================
+        let correlationData = null;
+        const dayNames = ['Domingo', 'Lunes', 'Martes', 'Miércoles', 'Jueves', 'Viernes', 'Sábado'];
+
+        async function fetchCorrelation() {
+            const orgName = document.getElementById('correlation-org-input').value.trim();
+            if (!orgName) {
+                alert('Ingrese el nombre de la organización');
+                return;
+            }
+
+            // Mostrar loading
+            document.getElementById('correlation-loading').style.display = 'block';
+            document.getElementById('correlation-empty').style.display = 'none';
+            document.getElementById('correlation-error').style.display = 'none';
+            document.getElementById('correlation-alerts').style.display = 'none';
+            document.getElementById('correlation-table-section').style.display = 'none';
+
+            try {
+                const response = await fetch('/api/github/org/' + encodeURIComponent(orgName) + '/correlation');
+                const data = await response.json();
+
+                document.getElementById('correlation-loading').style.display = 'none';
+
+                if (data.error) {
+                    document.getElementById('correlation-error').textContent = 'Error: ' + data.error;
+                    document.getElementById('correlation-error').style.display = 'block';
+                    return;
+                }
+
+                correlationData = data;
+                renderCorrelation();
+            } catch (error) {
+                document.getElementById('correlation-loading').style.display = 'none';
+                document.getElementById('correlation-error').textContent = 'Error de conexión: ' + error.message;
+                document.getElementById('correlation-error').style.display = 'block';
+            }
+        }
+
+        function renderCorrelation() {
+            if (!correlationData) return;
+
+            // Mostrar alertas si hay
+            const alerts = correlationData.alerts || [];
+            if (alerts.length > 0) {
+                const alertsHtml = alerts.map(a => `
+                    <div style="margin-bottom: 10px; padding: 10px; background: #1a1a2e; border-radius: 6px; border-left: 3px solid #ff4757;">
+                        <strong style="color: #ff4757;">${a.message}</strong><br>
+                        <span style="color: #888;">Repo: ${a.repo} | Fecha: ${a.date}</span><br>
+                        <span style="color: #ffa502;">Usuarios con acceso: ${a.collaborators.join(', ') || 'N/A'}</span>
+                    </div>
+                `).join('');
+                document.getElementById('correlation-alerts-list').innerHTML = alertsHtml;
+                document.getElementById('correlation-alerts').style.display = 'block';
+            }
+
+            // Tabla de correlación
+            const dates = correlationData.dates_sorted || [];
+            const byDate = correlationData.by_date || {};
+
+            let tableHtml = '';
+            for (const date of dates) {
+                const entries = byDate[date] || [];
+                for (const entry of entries) {
+                    const dateObj = new Date(date + 'T12:00:00');
+                    const dayName = dayNames[dateObj.getDay()];
+                    const isWeekend = entry.is_weekend;
+
+                    const collabsDisplay = entry.collaborators.length > 3
+                        ? entry.collaborators.slice(0, 3).join(', ') + ` +${entry.collaborators.length - 3} más`
+                        : entry.collaborators.join(', ') || 'N/A';
+
+                    tableHtml += `
+                        <tr style="${isWeekend ? 'background: #2a1a1a;' : ''}">
+                            <td style="font-weight: bold;">${date}</td>
+                            <td style="${isWeekend ? 'color: #ff4757; font-weight: bold;' : ''}">${dayName}${isWeekend ? ' ⚠️' : ''}</td>
+                            <td><a href="${entry.repo_url}" target="_blank" class="repo-link">${entry.repo}</a></td>
+                            <td><span class="${entry.private ? 'badge blocked' : 'badge allowed'}">${entry.private ? 'Privado' : 'Público'}</span></td>
+                            <td style="font-weight: bold; color: #00d4ff;">${entry.clones} <span style="color: #888; font-weight: normal;">(${entry.unique_cloners} únicos)</span></td>
+                            <td style="font-size: 0.85rem;" title="${entry.collaborators.join(', ')}">${collabsDisplay}</td>
+                        </tr>
+                    `;
+                }
+            }
+
+            if (tableHtml) {
+                document.getElementById('correlation-table-body').innerHTML = tableHtml;
+                document.getElementById('correlation-table-section').style.display = 'block';
+            } else {
+                document.getElementById('correlation-table-section').style.display = 'none';
+                document.getElementById('correlation-empty').textContent = 'No se encontró actividad de clones en los últimos 14 días.';
+                document.getElementById('correlation-empty').style.display = 'block';
+            }
+        }
 
         // ============================================
         // Preload Organization on Tab Switch
@@ -2484,6 +2639,13 @@ DASHBOARD_HTML = """
                 if (!trafficData) {
                     document.getElementById('traffic-org-input').value = DEFAULT_ORG;
                     fetchTrafficStats();
+                }
+            }
+            if (tabName === 'correlation') {
+                // Precargar organización por defecto si no hay datos
+                if (!correlationData) {
+                    document.getElementById('correlation-org-input').value = DEFAULT_ORG;
+                    fetchCorrelation();
                 }
             }
         }
@@ -2897,6 +3059,20 @@ def api_repo_traffic(owner, repo):
         return jsonify(traffic_data)
     except Exception as e:
         logger.error(f"Error obteniendo tráfico de {owner}/{repo}: {e}")
+        return jsonify({"error": str(e)}), 500
+
+
+@app.route('/api/github/org/<org>/correlation')
+def api_access_correlation(org):
+    """API endpoint para correlación de accesos - muestra clones por fecha con colaboradores"""
+    if not github_api or not github_api.is_configured():
+        return jsonify({"error": "GitHub API not configured. Set GITHUB_TOKEN environment variable."})
+
+    try:
+        correlation_data = github_api.get_access_correlation(org)
+        return jsonify(correlation_data)
+    except Exception as e:
+        logger.error(f"Error obteniendo correlación de {org}: {e}")
         return jsonify({"error": str(e)}), 500
 
 
