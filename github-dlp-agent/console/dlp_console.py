@@ -1896,6 +1896,16 @@ except ImportError as e:
     webhook_handler = None
     logger.warning(f"GitHub Webhook deshabilitado: {e}")
 
+# Importar base de datos
+try:
+    from database import db as dlp_db
+    DATABASE_ENABLED = True
+    logger.info("✓ Base de datos SQLite habilitada")
+except ImportError as e:
+    DATABASE_ENABLED = False
+    dlp_db = None
+    logger.warning(f"Base de datos deshabilitada: {e}")
+
 
 def tcp_receiver():
     """Recibe eventos de los agentes via TCP"""
@@ -1972,6 +1982,13 @@ def process_event(event_data: Dict):
             repo_tracker.track_event(event_data)
         except Exception as e:
             logger.error(f"Error en repo tracking: {e}")
+
+    # Guardar en base de datos
+    if DATABASE_ENABLED and dlp_db:
+        try:
+            dlp_db.insert_dlp_event(event_data)
+        except Exception as e:
+            logger.error(f"Error guardando en base de datos: {e}")
     
     # Log del evento
     if event_type == "network_connection":
@@ -2327,6 +2344,116 @@ def api_dlp_git_event():
         "success": True,
         "message": f"{operation.upper()} registrado: {github_user} -> {repo_name} desde {hostname}"
     })
+
+
+# ============== Database API Endpoints ==============
+
+@app.route('/api/db/events')
+def api_db_events():
+    """
+    API para consultar eventos con filtros.
+    Parámetros:
+    - date_from, date_to: Rango de fechas (ISO format)
+    - hour_from, hour_to: Rango de horas (0-23)
+    - username: Filtrar por usuario
+    - hostname: Filtrar por hostname
+    - repo_name: Filtrar por repositorio
+    - event_type: Filtrar por tipo de evento
+    - git_operation: Filtrar por operación git
+    - limit, offset: Paginación
+    """
+    if not DATABASE_ENABLED or not dlp_db:
+        return jsonify({"error": "Database not enabled"}), 503
+
+    from flask import request
+
+    filters = {}
+
+    # Parsear filtros de fecha
+    if request.args.get('date_from'):
+        filters['date_from'] = request.args.get('date_from')
+    if request.args.get('date_to'):
+        filters['date_to'] = request.args.get('date_to')
+
+    # Parsear filtros de hora
+    if request.args.get('hour_from'):
+        filters['hour_from'] = int(request.args.get('hour_from'))
+    if request.args.get('hour_to'):
+        filters['hour_to'] = int(request.args.get('hour_to'))
+
+    # Otros filtros
+    for key in ['username', 'hostname', 'repo_name', 'event_type', 'git_operation']:
+        if request.args.get(key):
+            filters[key] = request.args.get(key)
+
+    limit = int(request.args.get('limit', 100))
+    offset = int(request.args.get('offset', 0))
+
+    events = dlp_db.get_dlp_events(filters, limit, offset)
+    return jsonify({"events": events, "count": len(events), "filters": filters})
+
+
+@app.route('/api/db/stats')
+def api_db_stats():
+    """Obtiene estadísticas de la base de datos"""
+    if not DATABASE_ENABLED or not dlp_db:
+        return jsonify({"error": "Database not enabled"}), 503
+
+    from flask import request
+    days = int(request.args.get('days', 7))
+
+    stats = dlp_db.get_stats(days)
+    return jsonify(stats)
+
+
+@app.route('/api/db/user/<username>')
+def api_db_user_activity(username):
+    """Obtiene actividad de un usuario específico"""
+    if not DATABASE_ENABLED or not dlp_db:
+        return jsonify({"error": "Database not enabled"}), 503
+
+    from flask import request
+    days = int(request.args.get('days', 30))
+
+    activity = dlp_db.get_user_activity(username, days)
+    return jsonify(activity)
+
+
+@app.route('/api/db/repo/<path:repo_name>')
+def api_db_repo_activity(repo_name):
+    """Obtiene actividad de un repositorio específico"""
+    if not DATABASE_ENABLED or not dlp_db:
+        return jsonify({"error": "Database not enabled"}), 503
+
+    from flask import request
+    days = int(request.args.get('days', 30))
+
+    activity = dlp_db.get_repo_activity(repo_name, days)
+    return jsonify(activity)
+
+
+@app.route('/api/db/unauthorized')
+def api_db_unauthorized():
+    """Obtiene eventos no autorizados con filtros"""
+    if not DATABASE_ENABLED or not dlp_db:
+        return jsonify({"error": "Database not enabled"}), 503
+
+    from flask import request
+
+    filters = {}
+    if request.args.get('date_from'):
+        filters['date_from'] = request.args.get('date_from')
+    if request.args.get('date_to'):
+        filters['date_to'] = request.args.get('date_to')
+    if request.args.get('github_user'):
+        filters['github_user'] = request.args.get('github_user')
+    if request.args.get('alert_type'):
+        filters['alert_type'] = request.args.get('alert_type')
+
+    limit = int(request.args.get('limit', 100))
+
+    events = dlp_db.get_unauthorized_events(filters, limit)
+    return jsonify({"unauthorized": events, "count": len(events)})
 
 
 def main():
