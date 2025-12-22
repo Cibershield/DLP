@@ -1,7 +1,10 @@
 #!/bin/bash
 #
-# Instalador del GitHub DLP Agent para Ubuntu
-# Compatible con Ubuntu 20.04, 22.04, 24.04 (Desktop y Server)
+# Instalador del GitHub DLP Agent para Ubuntu y Debian
+# Compatible con:
+#   - Ubuntu 20.04, 22.04, 24.04 (Desktop y Server)
+#   - Debian 11 (Bullseye), Debian 12 (Bookworm)
+#   - Derivadas de Ubuntu/Debian (Linux Mint, Pop!_OS, etc.)
 #
 
 set -e
@@ -20,9 +23,12 @@ VENV_PATH="$SCRIPT_DIR/venv"
 MIN_PYTHON_VERSION="3.8"
 INSTALL_TYPE="user"
 INSTALL_COMPONENT="agent"  # agent, console, or both
-UBUNTU_VERSION=""
-UBUNTU_CODENAME=""
+DISTRO=""                  # ubuntu, debian
+DISTRO_VERSION=""
+DISTRO_CODENAME=""
+DEBIAN_VERSION=""          # Para verificación de paquetes específicos de Debian
 IS_DESKTOP=false
+ARCH=""                    # x86_64, aarch64
 
 # Funciones de utilidad
 log_info() {
@@ -45,7 +51,7 @@ log_error() {
 show_banner() {
     echo -e "${CYAN}"
     echo "======================================================================"
-    echo "              DLP Solution - Instalador v0.8"
+    echo "              DLP Solution - Instalador v0.9"
     echo "            Desarrollado por Cibershield R.L. 2025"
     echo "======================================================================"
     echo -e "${NC}"
@@ -83,6 +89,28 @@ select_component() {
     echo ""
 }
 
+# Detectar arquitectura del sistema
+detect_architecture() {
+    ARCH=$(uname -m)
+    case "$ARCH" in
+        x86_64|amd64)
+            ARCH="x86_64"
+            log_success "Arquitectura: x86_64 (64-bit)"
+            ;;
+        aarch64|arm64)
+            ARCH="aarch64"
+            log_success "Arquitectura: ARM64"
+            ;;
+        armv7l|armhf)
+            ARCH="armv7l"
+            log_warning "Arquitectura: ARM32 - soporte limitado"
+            ;;
+        *)
+            log_warning "Arquitectura: $ARCH - puede tener compatibilidad limitada"
+            ;;
+    esac
+}
+
 # Detectar distribución y versión
 detect_distribution() {
     log_info "Detectando distribución..."
@@ -94,28 +122,84 @@ detect_distribution() {
 
     source /etc/os-release
 
-    # Verificar que es Ubuntu o derivada
-    if [[ "$ID" != "ubuntu" && "$ID_LIKE" != *"ubuntu"* && "$ID_LIKE" != *"debian"* ]]; then
-        log_error "Este script es para Ubuntu/Debian. Detectado: $ID"
-        exit 1
-    fi
-
-    UBUNTU_VERSION="$VERSION_ID"
-    UBUNTU_CODENAME="$VERSION_CODENAME"
+    # Detectar distribución base
+    case "$ID" in
+        ubuntu)
+            DISTRO="ubuntu"
+            DISTRO_VERSION="$VERSION_ID"
+            DISTRO_CODENAME="$VERSION_CODENAME"
+            ;;
+        debian)
+            DISTRO="debian"
+            DISTRO_VERSION="$VERSION_ID"
+            DISTRO_CODENAME="$VERSION_CODENAME"
+            DEBIAN_VERSION="$VERSION_ID"
+            ;;
+        linuxmint|pop|elementary|zorin)
+            # Derivadas de Ubuntu
+            DISTRO="ubuntu"
+            DISTRO_VERSION="$VERSION_ID"
+            DISTRO_CODENAME="$VERSION_CODENAME"
+            log_info "Derivada de Ubuntu detectada: $ID"
+            ;;
+        raspbian)
+            # Raspberry Pi OS (basada en Debian)
+            DISTRO="debian"
+            DISTRO_VERSION="$VERSION_ID"
+            DISTRO_CODENAME="$VERSION_CODENAME"
+            DEBIAN_VERSION="$VERSION_ID"
+            log_info "Raspberry Pi OS detectado (basada en Debian)"
+            ;;
+        *)
+            # Verificar ID_LIKE para otras derivadas
+            if [[ "$ID_LIKE" == *"ubuntu"* ]]; then
+                DISTRO="ubuntu"
+                DISTRO_VERSION="$VERSION_ID"
+                DISTRO_CODENAME="$VERSION_CODENAME"
+                log_info "Derivada de Ubuntu detectada: $ID"
+            elif [[ "$ID_LIKE" == *"debian"* ]]; then
+                DISTRO="debian"
+                DISTRO_VERSION="$VERSION_ID"
+                DISTRO_CODENAME="$VERSION_CODENAME"
+                # Intentar detectar versión de Debian base
+                if [ -f /etc/debian_version ]; then
+                    DEBIAN_VERSION=$(cat /etc/debian_version | cut -d'.' -f1)
+                fi
+                log_info "Derivada de Debian detectada: $ID"
+            else
+                log_error "Distribución no soportada: $ID"
+                log_info "Este instalador es compatible con Ubuntu y Debian (y derivadas)"
+                exit 1
+            fi
+            ;;
+    esac
 
     log_success "Distribución: $PRETTY_NAME"
+    log_info "Base: $DISTRO $DISTRO_VERSION ($DISTRO_CODENAME)"
 
-    # Verificar versión mínima (Ubuntu 20.04+)
-    if [[ "$ID" == "ubuntu" ]]; then
-        major_version=$(echo "$VERSION_ID" | cut -d'.' -f1)
-        if [ "$major_version" -lt 20 ]; then
-            log_error "Se requiere Ubuntu 20.04 o superior. Detectado: $VERSION_ID"
-            exit 1
-        fi
-    fi
+    # Verificar versión mínima según distribución
+    case "$DISTRO" in
+        ubuntu)
+            major_version=$(echo "$DISTRO_VERSION" | cut -d'.' -f1)
+            if [ "$major_version" -lt 20 ]; then
+                log_error "Se requiere Ubuntu 20.04 o superior. Detectado: $DISTRO_VERSION"
+                exit 1
+            fi
+            ;;
+        debian)
+            # Debian 11+ requerido
+            if [ -n "$DEBIAN_VERSION" ] && [ "$DEBIAN_VERSION" -lt 11 ]; then
+                log_error "Se requiere Debian 11 (Bullseye) o superior. Detectado: $DEBIAN_VERSION"
+                exit 1
+            fi
+            ;;
+    esac
+
+    # Detectar arquitectura
+    detect_architecture
 
     # Detectar si es Desktop o Server
-    if dpkg -l | grep -q "ubuntu-desktop\|gnome-shell\|kde-plasma-desktop\|xfce4\|mate-desktop" 2>/dev/null; then
+    if dpkg -l 2>/dev/null | grep -qE "ubuntu-desktop|gnome-shell|kde-plasma-desktop|xfce4|mate-desktop|cinnamon|lxde|lxqt"; then
         IS_DESKTOP=true
         log_info "Modo: Desktop (GUI detectado)"
     else
@@ -197,6 +281,37 @@ check_system_dependencies() {
     log_success "Dependencias del sistema verificadas"
 }
 
+# Determinar nombre del paquete BCC según distribución
+get_bcc_package_name() {
+    case "$DISTRO" in
+        ubuntu)
+            echo "python3-bcc"
+            ;;
+        debian)
+            if [ -n "$DEBIAN_VERSION" ]; then
+                if [ "$DEBIAN_VERSION" -ge 12 ]; then
+                    # Debian 12 (Bookworm) y superior
+                    echo "python3-bpfcc"
+                else
+                    # Debian 11 (Bullseye)
+                    echo "bpfcc-python3"
+                fi
+            else
+                # Fallback para derivadas de Debian
+                echo "python3-bpfcc"
+            fi
+            ;;
+        *)
+            echo "python3-bcc"
+            ;;
+    esac
+}
+
+# Verificar si BCC está instalado (cualquier variante del nombre)
+is_bcc_installed() {
+    dpkg -l 2>/dev/null | grep -qE "python3-bcc|python3-bpfcc|bpfcc-python3"
+}
+
 # Instalar dependencias para monitoreo a nivel de kernel
 install_kernel_monitoring_deps() {
     log_info "Configurando monitoreo a nivel de kernel..."
@@ -215,21 +330,26 @@ install_kernel_monitoring_deps() {
     # Lista de paquetes para monitoreo de kernel
     KERNEL_DEPS=()
 
-    # eBPF/BCC - Monitoreo de syscalls
-    if ! dpkg -l | grep -q python3-bcc; then
-        KERNEL_DEPS+=("python3-bcc")
+    # eBPF/BCC - Monitoreo de syscalls (nombre varía según distro)
+    if ! is_bcc_installed; then
+        BCC_PACKAGE=$(get_bcc_package_name)
+        log_info "Paquete BCC para $DISTRO: $BCC_PACKAGE"
+        KERNEL_DEPS+=("$BCC_PACKAGE")
         KERNEL_DEPS+=("bpfcc-tools")
     fi
 
     # Linux headers para compilacion de programas eBPF
-    if ! dpkg -l | grep -q "linux-headers-$KERNEL_VERSION"; then
+    if ! dpkg -l 2>/dev/null | grep -q "linux-headers-$KERNEL_VERSION"; then
         KERNEL_DEPS+=("linux-headers-$KERNEL_VERSION")
     fi
 
     # Auditd - Sistema de auditoria del kernel (fallback)
     if ! command -v auditctl &> /dev/null; then
         KERNEL_DEPS+=("auditd")
-        KERNEL_DEPS+=("audispd-plugins")
+        # audispd-plugins puede no existir en todas las versiones
+        if apt-cache show audispd-plugins &>/dev/null; then
+            KERNEL_DEPS+=("audispd-plugins")
+        fi
     fi
 
     # Instalar dependencias
@@ -273,7 +393,7 @@ install_kernel_monitoring_deps() {
     echo ""
     log_info "Capacidades de monitoreo de kernel:"
 
-    if dpkg -l | grep -q python3-bcc; then
+    if is_bcc_installed; then
         log_success "  eBPF/BCC: Disponible (monitoreo de syscalls)"
     else
         log_warning "  eBPF/BCC: No disponible"
@@ -721,12 +841,14 @@ show_summary() {
     echo -e "${GREEN}"
     echo "======================================================================"
     echo "              INSTALACION COMPLETADA EXITOSAMENTE"
-    echo "         Desarrollado por Cibershield R.L. 2025 - v0.8"
+    echo "         Desarrollado por Cibershield R.L. 2025 - v0.9"
     echo "======================================================================"
     echo -e "${NC}"
     echo ""
     echo -e "${CYAN}Sistema:${NC}"
-    echo "  Distribucion: $PRETTY_NAME"
+    echo "  Distribución: $PRETTY_NAME"
+    echo "  Base: $DISTRO $DISTRO_VERSION"
+    echo "  Arquitectura: $ARCH"
     echo "  Componente instalado: $INSTALL_COMPONENT"
     echo ""
 
@@ -741,7 +863,7 @@ show_summary() {
             echo "  [+] Monitoreo de procesos (userspace)"
             echo "  [+] Monitoreo de sistema de archivos (inotify)"
             echo "  [+] Monitoreo de red (conexiones)"
-            if dpkg -l 2>/dev/null | grep -q python3-bcc; then
+            if is_bcc_installed; then
                 echo "  [+] Monitoreo de kernel (eBPF/syscalls)"
             fi
             if [ -f /proc/net/connector ]; then

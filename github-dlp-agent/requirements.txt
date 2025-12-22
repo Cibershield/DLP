@@ -12,6 +12,10 @@ inotify>=0.2.10
 flask>=2.3.0
 flask-cors>=4.0.0
 flask-session>=0.5.0
+flask-login>=0.6.0
+
+# Scheduler para accesos temporales
+APScheduler>=3.10.0
 
 # Autenticación MS Entra ID (Azure AD)
 msal>=1.24.0

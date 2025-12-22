@@ -1,0 +1,22 @@
+# Windows DLP Agent - Dependencies
+# Install with: pip install -r requirements.txt
+
+# Core
+psutil>=5.9.0
+PyYAML>=6.0.0
+
+# File system monitoring (cross-platform)
+watchdog>=3.0.0
+
+# Windows-specific
+wmi>=1.5.1
+pywin32>=306
+
+# HTTP for API communication
+requests>=2.31.0
+
+# Packaging (for building .exe)
+pyinstaller>=6.0.0
+
+# Optional: ETW tracing (advanced)
+# pywintrace>=0.3.0

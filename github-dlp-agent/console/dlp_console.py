@@ -1242,6 +1242,7 @@ DASHBOARD_HTML = """
         <button class="nav-tab" onclick="switchTab('organization')">🏢 Organización GitHub</button>
         <button class="nav-tab" onclick="switchTab('traffic')">📈 Clones/Tráfico</button>
         <button class="nav-tab" onclick="switchTab('correlation')">🔗 Correlación</button>
+        <button class="nav-tab" onclick="switchTab('users')">👥 Usuarios y Accesos</button>
         <button class="nav-tab" onclick="switchTab('agents')">🖥️ Agentes DLP</button>
         <button class="nav-tab" onclick="switchTab('unauthorized')">🚨 Accesos No Autorizados <span id="unauthorized-badge" class="count-badge" style="display:none;">0</span></button>
     </div>
@@ -1310,6 +1311,20 @@ DASHBOARD_HTML = """
         </div>
         <div id="org-info" style="display: none; background: #1a1a2e; padding: 20px; border-radius: 10px; margin-bottom: 20px;">
         </div>
+
+        <!-- Sección de Accesos Temporales Activos -->
+        <div id="temp-access-section" style="display: none; margin-bottom: 25px;">
+            <div style="display: flex; justify-content: space-between; align-items: center; margin-bottom: 15px;">
+                <h3 style="color: #ffa502; margin: 0;">⏱️ Accesos Temporales Activos</h3>
+                <button onclick="openTempAccessModal()" style="padding: 8px 16px; background: #ffa502; color: #000; border: none; border-radius: 6px; cursor: pointer; font-weight: 600;">
+                    + Nuevo Acceso Temporal
+                </button>
+            </div>
+            <div id="temp-access-list" style="background: #1a1a2e; border-radius: 10px; overflow: hidden;">
+                <!-- Se llena dinámicamente -->
+            </div>
+        </div>
+
         <!-- Búsqueda de repos -->
         <div id="repo-search-container" style="display: none; margin-bottom: 20px;">
             <input type="text" id="repo-search-input" placeholder="🔍 Buscar repositorio..."
@@ -1321,6 +1336,56 @@ DASHBOARD_HTML = """
             <p style="color: #666; grid-column: 1/-1; text-align: center; padding: 40px;">Ingrese el nombre de una organización para ver sus repositorios.</p>
         </div>
     </div>
+    </div>
+
+    <!-- Modal para Acceso Temporal -->
+    <div id="temp-access-modal" style="display: none; position: fixed; top: 0; left: 0; width: 100%; height: 100%; background: rgba(0,0,0,0.8); z-index: 1000; justify-content: center; align-items: center;">
+        <div style="background: #1a1a2e; padding: 30px; border-radius: 15px; width: 100%; max-width: 500px; border: 1px solid #333;">
+            <h3 style="color: #ffa502; margin: 0 0 20px 0;">⏱️ Nuevo Acceso Temporal</h3>
+
+            <div style="margin-bottom: 15px;">
+                <label style="display: block; color: #888; margin-bottom: 5px;">Usuario de GitHub</label>
+                <input type="text" id="temp-access-user" placeholder="ej: usuario123"
+                       style="width: 100%; padding: 10px; background: #0f0f23; border: 1px solid #333; border-radius: 6px; color: #e0e0e0;">
+            </div>
+
+            <div style="margin-bottom: 15px;">
+                <label style="display: block; color: #888; margin-bottom: 5px;">Repositorio</label>
+                <select id="temp-access-repo" style="width: 100%; padding: 10px; background: #0f0f23; border: 1px solid #333; border-radius: 6px; color: #e0e0e0;">
+                    <option value="">Seleccione un repositorio...</option>
+                </select>
+            </div>
+
+            <div style="margin-bottom: 15px;">
+                <label style="display: block; color: #888; margin-bottom: 5px;">Permiso</label>
+                <select id="temp-access-permission" style="width: 100%; padding: 10px; background: #0f0f23; border: 1px solid #333; border-radius: 6px; color: #e0e0e0;">
+                    <option value="pull">Read (pull)</option>
+                    <option value="push" selected>Write (push)</option>
+                    <option value="maintain">Maintain</option>
+                    <option value="admin">Admin</option>
+                </select>
+            </div>
+
+            <div style="margin-bottom: 20px;">
+                <label style="display: block; color: #888; margin-bottom: 5px;">Duración</label>
+                <select id="temp-access-duration" style="width: 100%; padding: 10px; background: #0f0f23; border: 1px solid #333; border-radius: 6px; color: #e0e0e0;">
+                    <option value="3">3 días</option>
+                    <option value="7" selected>1 semana (7 días)</option>
+                    <option value="10">10 días</option>
+                    <option value="14">2 semanas (14 días)</option>
+                    <option value="30">1 mes (30 días)</option>
+                </select>
+            </div>
+
+            <div style="display: flex; gap: 10px; justify-content: flex-end;">
+                <button onclick="closeTempAccessModal()" style="padding: 10px 20px; background: #333; color: #e0e0e0; border: none; border-radius: 6px; cursor: pointer;">
+                    Cancelar
+                </button>
+                <button onclick="createTempAccess()" style="padding: 10px 20px; background: #ffa502; color: #000; border: none; border-radius: 6px; cursor: pointer; font-weight: 600;">
+                    Crear Acceso
+                </button>
+            </div>
+        </div>
     </div>
 
     <!-- Tab: Traffic Statistics -->
@@ -1489,6 +1554,52 @@ DASHBOARD_HTML = """
         </div>
         <div id="correlation-empty" style="text-align: center; padding: 40px; color: #666;">
             Ingrese el nombre de una organización para analizar la correlación de accesos.
+        </div>
+    </div>
+    </div>
+
+    <!-- Tab: Users and Access -->
+    <div id="tab-users" class="tab-content">
+    <div class="main-content">
+        <div class="section-header">
+            <h2>👥 Usuarios y Accesos</h2>
+        </div>
+        <p style="color: #888; margin-bottom: 15px;">
+            Visualiza los miembros de una organización GitHub y los repositorios a los que tienen acceso.
+        </p>
+
+        <div class="org-input-section" style="margin-bottom: 20px; display: flex; gap: 10px; align-items: center;">
+            <input type="text" id="users-org-input" placeholder="Nombre de la organización (ej: Delfix-CR)"
+                   style="flex: 1; padding: 12px 16px; background: #1a1a2e; border: 1px solid #333; border-radius: 8px; color: #e0e0e0; font-size: 1rem;">
+            <button onclick="fetchOrgMembers()" class="filter-btn active" style="padding: 12px 24px;">
+                🔍 Cargar Miembros
+            </button>
+        </div>
+
+        <div id="users-loading" style="display: none; text-align: center; padding: 40px;">
+            <div class="loading-spinner"></div>
+            <p style="margin-top: 10px; color: #888;">Cargando miembros de la organización...</p>
+        </div>
+
+        <div id="users-stats" style="display: none; margin-bottom: 20px;">
+            <div class="stats-grid" style="display: grid; grid-template-columns: repeat(auto-fit, minmax(150px, 1fr)); gap: 15px;">
+                <div class="stat-card">
+                    <div class="stat-value" id="users-total-members">0</div>
+                    <div class="stat-label">Miembros</div>
+                </div>
+                <div class="stat-card">
+                    <div class="stat-value" id="users-total-repos">0</div>
+                    <div class="stat-label">Repositorios</div>
+                </div>
+            </div>
+        </div>
+
+        <div id="users-grid" class="users-grid" style="display: grid; grid-template-columns: repeat(auto-fill, minmax(350px, 1fr)); gap: 20px;">
+            <!-- Se llena dinámicamente con JavaScript -->
+        </div>
+
+        <div id="users-empty" style="text-align: center; padding: 40px; color: #666;">
+            Ingrese el nombre de una organización para ver sus miembros y accesos.
         </div>
     </div>
     </div>
@@ -2084,12 +2195,177 @@ DASHBOARD_HTML = """
             });
         }
 
+        // ============================================
+        // Temporary Access Functions
+        // ============================================
+        let tempAccessOrgName = '';
+
+        function openTempAccessModal() {
+            if (!tempAccessOrgName) {
+                alert('Primero cargue una organización');
+                return;
+            }
+
+            // Llenar el select de repos
+            const repoSelect = document.getElementById('temp-access-repo');
+            repoSelect.innerHTML = '<option value="">Seleccione un repositorio...</option>';
+
+            if (orgRepos && orgRepos.length > 0) {
+                orgRepos.forEach(repo => {
+                    repoSelect.innerHTML += `<option value="${repo.name}">${repo.name}</option>`;
+                });
+            }
+
+            document.getElementById('temp-access-modal').style.display = 'flex';
+        }
+
+        function closeTempAccessModal() {
+            document.getElementById('temp-access-modal').style.display = 'none';
+            document.getElementById('temp-access-user').value = '';
+            document.getElementById('temp-access-repo').value = '';
+        }
+
+        async function createTempAccess() {
+            const user = document.getElementById('temp-access-user').value.trim();
+            const repo = document.getElementById('temp-access-repo').value;
+            const permission = document.getElementById('temp-access-permission').value;
+            const duration = document.getElementById('temp-access-duration').value;
+
+            if (!user || !repo) {
+                alert('Complete todos los campos');
+                return;
+            }
+
+            try {
+                const response = await fetch('/api/access/grants', {
+                    method: 'POST',
+                    headers: { 'Content-Type': 'application/json' },
+                    body: JSON.stringify({
+                        github_user: user,
+                        organization: tempAccessOrgName,
+                        repo_name: repo,
+                        permission: permission,
+                        duration_days: parseInt(duration)
+                    })
+                });
+
+                const data = await response.json();
+
+                if (data.error) {
+                    alert('Error: ' + data.error);
+                    return;
+                }
+
+                alert(data.message || 'Acceso temporal creado exitosamente');
+                closeTempAccessModal();
+                fetchTempAccess();
+
+            } catch (error) {
+                alert('Error: ' + error.message);
+            }
+        }
+
+        async function fetchTempAccess() {
+            if (!tempAccessOrgName) return;
+
+            try {
+                const response = await fetch('/api/access/grants?organization=' + encodeURIComponent(tempAccessOrgName));
+                const data = await response.json();
+
+                const container = document.getElementById('temp-access-list');
+                const section = document.getElementById('temp-access-section');
+
+                if (!data.grants || data.grants.length === 0) {
+                    container.innerHTML = `
+                        <div style="padding: 20px; text-align: center; color: #666;">
+                            No hay accesos temporales activos para esta organización.
+                        </div>
+                    `;
+                    section.style.display = 'block';
+                    return;
+                }
+
+                let html = '';
+                for (const grant of data.grants) {
+                    const expiresDate = new Date(grant.expires_at);
+                    const now = new Date();
+                    const diffHours = Math.round((expiresDate - now) / (1000 * 60 * 60));
+                    const diffDays = Math.floor(diffHours / 24);
+
+                    let timeLeft = '';
+                    let timeColor = '#00ff88';
+                    if (diffDays > 0) {
+                        timeLeft = `${diffDays} día${diffDays > 1 ? 's' : ''}`;
+                    } else if (diffHours > 0) {
+                        timeLeft = `${diffHours} hora${diffHours > 1 ? 's' : ''}`;
+                        timeColor = '#ffa502';
+                    } else {
+                        timeLeft = 'Expirado';
+                        timeColor = '#ff4757';
+                    }
+
+                    const permissionClass = grant.permission === 'admin' ? 'blocked' :
+                                           grant.permission === 'push' ? 'allowed' : 'network';
+
+                    html += `
+                        <div style="padding: 15px; border-bottom: 1px solid #333; display: flex; justify-content: space-between; align-items: center;">
+                            <div>
+                                <span style="font-weight: bold; color: #00d4ff;">@${grant.github_user}</span>
+                                <span style="color: #888; margin: 0 10px;">→</span>
+                                <span style="color: #e0e0e0;">${grant.repo_name}</span>
+                                <span class="badge ${permissionClass}" style="margin-left: 10px; font-size: 0.75rem; padding: 2px 8px;">${grant.permission}</span>
+                            </div>
+                            <div style="display: flex; align-items: center; gap: 15px;">
+                                <span style="color: ${timeColor}; font-size: 0.9rem;">
+                                    ⏱️ ${timeLeft}
+                                </span>
+                                <button onclick="revokeTempAccess(${grant.id}, '${grant.github_user}')"
+                                        style="padding: 5px 12px; background: #ff4757; color: white; border: none; border-radius: 4px; cursor: pointer; font-size: 0.8rem;">
+                                    Revocar
+                                </button>
+                            </div>
+                        </div>
+                    `;
+                }
+
+                container.innerHTML = html;
+                section.style.display = 'block';
+
+            } catch (error) {
+                console.error('Error fetching temp access:', error);
+            }
+        }
+
+        async function revokeTempAccess(grantId, username) {
+            if (!confirm(`¿Revocar acceso de @${username}?`)) return;
+
+            try {
+                const response = await fetch('/api/access/grants/' + grantId, {
+                    method: 'DELETE'
+                });
+
+                const data = await response.json();
+
+                if (data.error) {
+                    alert('Error: ' + data.error);
+                    return;
+                }
+
+                alert(data.message || 'Acceso revocado');
+                fetchTempAccess();
+
+            } catch (error) {
+                alert('Error: ' + error.message);
+            }
+        }
+
         async function fetchOrganization() {
             const orgName = document.getElementById('org-name-input').value.trim();
             if (!orgName) {
                 alert('Ingrese el nombre de la organización');
                 return;
             }
+            tempAccessOrgName = orgName;
 
             currentOrgName = orgName;
             const infoDiv = document.getElementById('org-info');
@@ -2139,6 +2415,9 @@ DASHBOARD_HTML = """
                 }
 
                 renderOrgRepos(orgReposData);
+
+                // Cargar accesos temporales de esta organización
+                fetchTempAccess();
             } catch (error) {
                 console.error('Error fetching organization:', error);
                 reposGrid.innerHTML = '<p style="color: #ff4757; grid-column: 1/-1; text-align: center; padding: 40px;">Error de conexión: ' + error.message + '</p>';
@@ -3078,6 +3357,194 @@ DASHBOARD_HTML = """
         }
 
         // ============================================
+        // Users and Access Tab
+        // ============================================
+        let usersOrgData = null;
+        let usersMembersData = [];
+        let usersCurrentOrg = '';
+        let usersExpandedUsers = new Set();
+
+        async function fetchOrgMembers() {
+            const orgName = document.getElementById('users-org-input').value.trim();
+            if (!orgName) {
+                alert('Ingrese el nombre de la organización');
+                return;
+            }
+
+            usersCurrentOrg = orgName;
+            usersExpandedUsers.clear();
+
+            // Mostrar loading
+            document.getElementById('users-loading').style.display = 'block';
+            document.getElementById('users-empty').style.display = 'none';
+            document.getElementById('users-grid').innerHTML = '';
+            document.getElementById('users-stats').style.display = 'none';
+
+            try {
+                const response = await fetch('/api/github/org/' + encodeURIComponent(orgName) + '/members');
+                const data = await response.json();
+
+                document.getElementById('users-loading').style.display = 'none';
+
+                if (data.error) {
+                    document.getElementById('users-empty').textContent = 'Error: ' + data.error;
+                    document.getElementById('users-empty').style.display = 'block';
+                    return;
+                }
+
+                usersMembersData = data.members || [];
+                const totalRepos = data.total_repos || 0;
+
+                // Mostrar estadísticas
+                document.getElementById('users-total-members').textContent = usersMembersData.length;
+                document.getElementById('users-total-repos').textContent = totalRepos;
+                document.getElementById('users-stats').style.display = 'block';
+
+                // Renderizar miembros
+                renderUsersGrid();
+
+            } catch (error) {
+                document.getElementById('users-loading').style.display = 'none';
+                document.getElementById('users-empty').textContent = 'Error al cargar miembros: ' + error.message;
+                document.getElementById('users-empty').style.display = 'block';
+            }
+        }
+
+        function renderUsersGrid() {
+            const container = document.getElementById('users-grid');
+
+            if (!usersMembersData || usersMembersData.length === 0) {
+                document.getElementById('users-empty').textContent = 'No se encontraron miembros en esta organización.';
+                document.getElementById('users-empty').style.display = 'block';
+                container.innerHTML = '';
+                return;
+            }
+
+            document.getElementById('users-empty').style.display = 'none';
+
+            let html = '';
+            for (const member of usersMembersData) {
+                const isExpanded = usersExpandedUsers.has(member.username);
+                const expandIcon = isExpanded ? '▼' : '▶';
+
+                html += `
+                    <div class="user-card" style="background: #1a1a2e; border-radius: 12px; overflow: hidden; transition: all 0.3s ease;">
+                        <div class="user-header" onclick="toggleUserRepos('${member.username}')"
+                             style="padding: 16px; cursor: pointer; display: flex; align-items: center; gap: 12px; border-bottom: 1px solid #333;">
+                            <img src="${member.avatar}" alt="${member.username}"
+                                 style="width: 48px; height: 48px; border-radius: 50%; border: 2px solid #00d4ff;">
+                            <div style="flex: 1;">
+                                <div style="font-weight: bold; color: #e0e0e0; font-size: 1.1rem;">@${member.username}</div>
+                                <div style="color: #888; font-size: 0.85rem;">Click para ver repositorios</div>
+                            </div>
+                            <span class="expand-icon" id="expand-icon-${member.username}"
+                                  style="color: #00d4ff; font-size: 1.2rem; transition: transform 0.3s;">${expandIcon}</span>
+                        </div>
+                        <div id="user-repos-${member.username}" class="user-repos-list"
+                             style="display: ${isExpanded ? 'block' : 'none'}; padding: 0; max-height: 400px; overflow-y: auto;">
+                            <div style="padding: 20px; text-align: center; color: #666;">
+                                <div class="loading-spinner" style="margin: 0 auto 10px;"></div>
+                                Cargando repositorios...
+                            </div>
+                        </div>
+                    </div>
+                `;
+            }
+            container.innerHTML = html;
+        }
+
+        async function toggleUserRepos(username) {
+            const container = document.getElementById('user-repos-' + username);
+            const icon = document.getElementById('expand-icon-' + username);
+
+            if (usersExpandedUsers.has(username)) {
+                // Colapsar
+                usersExpandedUsers.delete(username);
+                container.style.display = 'none';
+                icon.textContent = '▶';
+                return;
+            }
+
+            // Expandir
+            usersExpandedUsers.add(username);
+            container.style.display = 'block';
+            icon.textContent = '▼';
+
+            // Cargar repos
+            container.innerHTML = `
+                <div style="padding: 20px; text-align: center; color: #666;">
+                    <div class="loading-spinner" style="margin: 0 auto 10px;"></div>
+                    Cargando repositorios...
+                </div>
+            `;
+
+            try {
+                const response = await fetch('/api/github/org/' + encodeURIComponent(usersCurrentOrg) + '/members/' + encodeURIComponent(username) + '/repos');
+                const data = await response.json();
+
+                if (data.error) {
+                    container.innerHTML = `<div style="padding: 20px; color: #ff4757; text-align: center;">Error: ${data.error}</div>`;
+                    return;
+                }
+
+                const repos = data.repos || [];
+
+                if (repos.length === 0) {
+                    container.innerHTML = `<div style="padding: 20px; color: #888; text-align: center;">Este usuario no tiene acceso a repositorios específicos.</div>`;
+                    return;
+                }
+
+                let reposHtml = '<div style="padding: 8px;">';
+                for (const repo of repos) {
+                    const permissionClass = getPermissionClass(repo.permission);
+                    const permissionLabel = repo.role_name || repo.permission;
+                    const privateIcon = repo.private ? '🔒' : '🌐';
+
+                    reposHtml += `
+                        <div style="padding: 10px 12px; border-bottom: 1px solid #2a2a3e; display: flex; justify-content: space-between; align-items: center;">
+                            <div>
+                                <a href="${repo.url}" target="_blank" style="color: #00d4ff; text-decoration: none; font-weight: 500;">
+                                    ${privateIcon} ${repo.name}
+                                </a>
+                                ${repo.archived ? '<span style="color: #ffa502; font-size: 0.75rem; margin-left: 8px;">Archivado</span>' : ''}
+                            </div>
+                            <span class="badge ${permissionClass}" style="font-size: 0.75rem; padding: 3px 8px; border-radius: 4px;">
+                                ${permissionLabel}
+                            </span>
+                        </div>
+                    `;
+                }
+                reposHtml += '</div>';
+
+                // Agregar resumen
+                reposHtml = `
+                    <div style="padding: 12px 16px; background: #16213e; border-bottom: 1px solid #333;">
+                        <span style="color: #00ff88; font-weight: bold;">${repos.length}</span>
+                        <span style="color: #888;"> repositorios accesibles</span>
+                    </div>
+                ` + reposHtml;
+
+                container.innerHTML = reposHtml;
+
+            } catch (error) {
+                container.innerHTML = `<div style="padding: 20px; color: #ff4757; text-align: center;">Error al cargar: ${error.message}</div>`;
+            }
+        }
+
+        function getPermissionClass(permission) {
+            switch (permission) {
+                case 'admin': return 'blocked';
+                case 'maintain': return 'network';
+                case 'push':
+                case 'write': return 'allowed';
+                case 'triage': return 'network';
+                case 'pull':
+                case 'read':
+                default: return 'allowed';
+            }
+        }
+
+        // ============================================
         // Preload Organization on Tab Switch
         // ============================================
         const DEFAULT_ORG = 'Delfix-CR';
@@ -3161,6 +3628,23 @@ except ImportError as e:
     DATABASE_ENABLED = False
     dlp_db = None
     logger.warning(f"Base de datos deshabilitada: {e}")
+
+# Importar y configurar scheduler de accesos temporales
+SCHEDULER_ENABLED = False
+access_scheduler = None
+try:
+    if DATABASE_ENABLED and REPO_TRACKING_ENABLED and github_api:
+        from scheduler import init_scheduler, get_scheduler
+        access_scheduler = init_scheduler(dlp_db, github_api, check_interval=1)
+        SCHEDULER_ENABLED = access_scheduler.is_running
+        if SCHEDULER_ENABLED:
+            logger.info("✓ Scheduler de accesos temporales iniciado")
+        else:
+            logger.warning("⚠ Scheduler de accesos temporales no pudo iniciarse (APScheduler no instalado?)")
+except ImportError as e:
+    logger.warning(f"Scheduler de accesos temporales deshabilitado: {e}")
+except Exception as e:
+    logger.error(f"Error cargando scheduler: {e}")
 
 
 def load_events_from_database():
@@ -3624,6 +4108,258 @@ def api_access_correlation(org):
         return jsonify(correlation_data)
     except Exception as e:
         logger.error(f"Error obteniendo correlación de {org}: {e}")
+        return jsonify({"error": str(e)}), 500
+
+
+# ============== Organization Members Endpoints ==============
+
+@app.route('/api/github/org/<org>/members')
+def api_org_members(org):
+    """API endpoint para obtener miembros de una organización"""
+    if not github_api or not github_api.is_configured():
+        return jsonify({"error": "GitHub API not configured. Set GITHUB_TOKEN environment variable."})
+
+    try:
+        members = github_api.get_org_members(org)
+        repos = github_api.get_org_repos(org)
+
+        return jsonify({
+            "organization": org,
+            "members": members,
+            "count": len(members),
+            "total_repos": len(repos)
+        })
+    except Exception as e:
+        logger.error(f"Error obteniendo miembros de {org}: {e}")
+        return jsonify({"error": str(e)}), 500
+
+
+@app.route('/api/github/org/<org>/members/<username>/repos')
+def api_member_repos(org, username):
+    """API endpoint para obtener repositorios a los que tiene acceso un miembro"""
+    if not github_api or not github_api.is_configured():
+        return jsonify({"error": "GitHub API not configured. Set GITHUB_TOKEN environment variable."})
+
+    try:
+        repos = github_api.get_user_repos_in_org(org, username)
+
+        return jsonify({
+            "organization": org,
+            "username": username,
+            "repos": repos,
+            "count": len(repos)
+        })
+    except Exception as e:
+        logger.error(f"Error obteniendo repos de {username} en {org}: {e}")
+        return jsonify({"error": str(e)}), 500
+
+
+# ============== Temporary Access Grants Endpoints ==============
+
+@app.route('/api/access/grants', methods=['GET'])
+def api_list_access_grants():
+    """API endpoint para listar accesos temporales"""
+    if not DATABASE_ENABLED or not dlp_db:
+        return jsonify({"error": "Database not enabled"}), 503
+
+    from flask import request
+
+    filters = {}
+    if request.args.get('organization'):
+        filters['organization'] = request.args.get('organization')
+    if request.args.get('repo_name'):
+        filters['repo_name'] = request.args.get('repo_name')
+    if request.args.get('github_user'):
+        filters['github_user'] = request.args.get('github_user')
+    if request.args.get('status'):
+        filters['status'] = request.args.get('status')
+    if request.args.get('include_all') == 'true':
+        filters['status'] = None  # Incluir todos los estados
+
+    grants = dlp_db.get_access_grants(filters)
+
+    return jsonify({
+        "grants": grants,
+        "count": len(grants),
+        "scheduler_enabled": SCHEDULER_ENABLED
+    })
+
+
+@app.route('/api/access/grants', methods=['POST'])
+def api_create_access_grant():
+    """API endpoint para crear un nuevo acceso temporal"""
+    if not DATABASE_ENABLED or not dlp_db:
+        return jsonify({"error": "Database not enabled"}), 503
+
+    if not github_api or not github_api.is_configured():
+        return jsonify({"error": "GitHub API not configured"}), 503
+
+    from flask import request
+    from datetime import datetime, timedelta
+
+    data = request.get_json()
+
+    # Validar campos requeridos
+    required = ['github_user', 'organization', 'repo_name', 'permission', 'duration_days']
+    missing = [f for f in required if not data.get(f)]
+    if missing:
+        return jsonify({"error": f"Campos requeridos faltantes: {', '.join(missing)}"}), 400
+
+    # Validar permiso
+    valid_permissions = ['pull', 'push', 'admin', 'maintain', 'triage']
+    if data['permission'] not in valid_permissions:
+        return jsonify({"error": f"Permiso inválido. Usar: {', '.join(valid_permissions)}"}), 400
+
+    # Calcular fecha de expiración
+    try:
+        duration_days = int(data['duration_days'])
+        if duration_days < 1 or duration_days > 365:
+            return jsonify({"error": "Duración debe estar entre 1 y 365 días"}), 400
+        expires_at = (datetime.now() + timedelta(days=duration_days)).isoformat()
+    except ValueError:
+        return jsonify({"error": "Duración inválida"}), 400
+
+    try:
+        # Primero agregar colaborador en GitHub
+        result = github_api.add_collaborator(
+            data['organization'],
+            data['repo_name'],
+            data['github_user'],
+            data['permission']
+        )
+
+        if result and result.get('error'):
+            return jsonify({"error": f"Error en GitHub: {result['error']}"}), 400
+
+        # Registrar en base de datos
+        grant_id = dlp_db.create_access_grant(
+            github_user=data['github_user'],
+            organization=data['organization'],
+            repo_name=data['repo_name'],
+            permission=data['permission'],
+            expires_at=expires_at,
+            granted_by=data.get('granted_by', 'console')
+        )
+
+        return jsonify({
+            "success": True,
+            "grant_id": grant_id,
+            "expires_at": expires_at,
+            "message": f"Acceso temporal creado para {data['github_user']} (expira: {expires_at[:10]})"
+        }), 201
+
+    except Exception as e:
+        logger.error(f"Error creando acceso temporal: {e}")
+        return jsonify({"error": str(e)}), 500
+
+
+@app.route('/api/access/grants/<int:grant_id>', methods=['DELETE'])
+def api_revoke_access_grant(grant_id):
+    """API endpoint para revocar un acceso temporal"""
+    if not DATABASE_ENABLED or not dlp_db:
+        return jsonify({"error": "Database not enabled"}), 503
+
+    if not github_api or not github_api.is_configured():
+        return jsonify({"error": "GitHub API not configured"}), 503
+
+    from flask import request
+
+    # Obtener el grant
+    grant = dlp_db.get_access_grant_by_id(grant_id)
+    if not grant:
+        return jsonify({"error": "Acceso no encontrado"}), 404
+
+    if grant['status'] != 'active':
+        return jsonify({"error": f"Acceso ya está {grant['status']}"}), 400
+
+    try:
+        # Revocar en GitHub
+        result = github_api.remove_collaborator(
+            grant['organization'],
+            grant['repo_name'],
+            grant['github_user']
+        )
+
+        # Obtener razón si se proporciona
+        data = request.get_json() or {}
+        reason = data.get('reason', 'Revocado manualmente desde consola')
+
+        # Marcar como revocado en DB
+        dlp_db.revoke_access_grant(grant_id, reason)
+
+        return jsonify({
+            "success": True,
+            "message": f"Acceso de {grant['github_user']} revocado exitosamente"
+        })
+
+    except Exception as e:
+        logger.error(f"Error revocando acceso {grant_id}: {e}")
+        return jsonify({"error": str(e)}), 500
+
+
+@app.route('/api/access/grants/<int:grant_id>/extend', methods=['POST'])
+def api_extend_access_grant(grant_id):
+    """API endpoint para extender un acceso temporal"""
+    if not DATABASE_ENABLED or not dlp_db:
+        return jsonify({"error": "Database not enabled"}), 503
+
+    from flask import request
+    from datetime import datetime, timedelta
+
+    grant = dlp_db.get_access_grant_by_id(grant_id)
+    if not grant:
+        return jsonify({"error": "Acceso no encontrado"}), 404
+
+    if grant['status'] != 'active':
+        return jsonify({"error": f"Acceso ya está {grant['status']}"}), 400
+
+    data = request.get_json() or {}
+    additional_days = int(data.get('additional_days', 7))
+
+    if additional_days < 1 or additional_days > 365:
+        return jsonify({"error": "Días adicionales debe estar entre 1 y 365"}), 400
+
+    try:
+        # Calcular nueva fecha de expiración
+        current_expires = datetime.fromisoformat(grant['expires_at'].replace('Z', '+00:00').replace('+00:00', ''))
+        new_expires = current_expires + timedelta(days=additional_days)
+        new_expires_str = new_expires.isoformat()
+
+        dlp_db.extend_access_grant(grant_id, new_expires_str)
+
+        return jsonify({
+            "success": True,
+            "new_expires_at": new_expires_str,
+            "message": f"Acceso extendido hasta {new_expires_str[:10]}"
+        })
+
+    except Exception as e:
+        logger.error(f"Error extendiendo acceso {grant_id}: {e}")
+        return jsonify({"error": str(e)}), 500
+
+
+@app.route('/api/access/scheduler/status')
+def api_scheduler_status():
+    """API endpoint para obtener estado del scheduler"""
+    if access_scheduler:
+        return jsonify(access_scheduler.get_status())
+    return jsonify({
+        "is_running": False,
+        "scheduler_active": False,
+        "message": "Scheduler no inicializado"
+    })
+
+
+@app.route('/api/access/scheduler/run', methods=['POST'])
+def api_scheduler_run_manual():
+    """API endpoint para ejecutar verificación manual de accesos expirados"""
+    if not access_scheduler:
+        return jsonify({"error": "Scheduler no disponible"}), 503
+
+    try:
+        stats = access_scheduler.run_manual_check()
+        return jsonify(stats)
+    except Exception as e:
         return jsonify({"error": str(e)}), 500
 
 

@@ -1,0 +1,101 @@
+# Windows DLP Agent Configuration
+# Cibershield R.L. 2025
+
+agent:
+  name: "DLP-WIN"
+  version: "1.0.0"
+  log_level: "INFO"
+
+console:
+  host: "127.0.0.1"
+  port: 5000
+  use_ssl: false
+  # Timeout for API calls in seconds
+  timeout: 10
+  # Retry attempts for failed connections
+  retry_attempts: 3
+
+monitoring:
+  # Monitored directories (use Windows paths)
+  paths:
+    - "%USERPROFILE%"
+    - "%TEMP%"
+    - "C:\\Projects"
+    - "C:\\Repos"
+
+  # File patterns to watch
+  patterns:
+    - "*.git"
+    - ".git*"
+    - "*.env"
+    - "*.pem"
+    - "*.key"
+    - "credentials*"
+
+  # Exclude patterns
+  exclude:
+    - "*.log"
+    - "node_modules"
+    - ".venv"
+    - "__pycache__"
+
+  # Process monitoring
+  processes:
+    # Git-related
+    - "git.exe"
+    - "git-remote-https.exe"
+    - "gh.exe"
+    # Network tools
+    - "curl.exe"
+    - "wget.exe"
+    # SSH
+    - "ssh.exe"
+    - "ssh-agent.exe"
+    - "scp.exe"
+
+  # GitHub domains/IPs to monitor
+  github:
+    domains:
+      - "github.com"
+      - "api.github.com"
+      - "raw.githubusercontent.com"
+      - "gist.github.com"
+    ip_ranges:
+      - "140.82.112.0/20"
+      - "192.30.252.0/22"
+      - "185.199.108.0/22"
+      - "143.55.64.0/20"
+
+security:
+  # Admin password hash (SHA-256)
+  # Default: "admin123" - CHANGE IN PRODUCTION
+  admin_password_hash: "240be518fabd2724ddb6f04eeb9d5b2c4f739a3bb7c72f6e60fe19ca8cd35b4a"
+
+  # Enable self-protection (prevent uninstall without password)
+  self_protection: true
+
+  # Enable watchdog (auto-restart if killed)
+  watchdog_enabled: true
+
+network:
+  # Monitor all network connections
+  enabled: true
+
+  # Log DNS queries (requires admin)
+  log_dns: false
+
+  # Block connections (requires firewall rules)
+  block_unauthorized: false
+
+reporting:
+  # Send events to console
+  enabled: true
+
+  # Batch events before sending
+  batch_size: 10
+
+  # Maximum time to wait before sending batch (seconds)
+  batch_timeout: 5
+
+  # Local event log file
+  local_log: "%PROGRAMDATA%\\DLP-Agent\\events.log"

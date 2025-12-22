@@ -467,16 +467,102 @@ class GitHubIntegration:
             if (datetime.now() - cached['time']).seconds < self._org_cache_ttl:
                 return cached['data']
 
-        data = self._make_request(f"/orgs/{org}/members")
         members = []
-        if isinstance(data, list):
-            members = [{
-                "username": m.get("login"),
-                "avatar": m.get("avatar_url"),
-                "role": "member"
-            } for m in data]
+        page = 1
+        while True:
+            data = self._make_request(f"/orgs/{org}/members?per_page=100&page={page}")
+            if not data or isinstance(data, dict) and "error" in data:
+                break
+            if not data:
+                break
+            for m in data:
+                members.append({
+                    "username": m.get("login"),
+                    "avatar": m.get("avatar_url"),
+                    "id": m.get("id"),
+                    "type": m.get("type", "User"),
+                    "site_admin": m.get("site_admin", False)
+                })
+            if len(data) < 100:
+                break
+            page += 1
 
         self._cache[cache_key] = {'data': members, 'time': datetime.now()}
+        return members
+
+    def get_user_repos_in_org(self, org: str, username: str) -> List[Dict]:
+        """
+        Obtiene todos los repositorios de una organización a los que un usuario tiene acceso.
+        Itera por cada repo y verifica los permisos del usuario.
+
+        Args:
+            org: Nombre de la organización
+            username: Nombre de usuario de GitHub
+
+        Returns:
+            Lista de repos con los permisos del usuario
+        """
+        cache_key = f"user_repos:{org}:{username}"
+        if cache_key in self._cache:
+            cached = self._cache[cache_key]
+            if (datetime.now() - cached['time']).seconds < self._cache_ttl:
+                return cached['data']
+
+        repos = self.get_org_repos(org)
+        user_repos = []
+
+        for repo in repos:
+            repo_name = repo.get("name")
+            try:
+                # Obtener permisos del usuario en este repo
+                perms = self.get_repo_permissions(org, repo_name, username)
+                permission = perms.get("permission", "none")
+
+                # Solo incluir si tiene algún acceso
+                if permission != "none":
+                    user_repos.append({
+                        "name": repo_name,
+                        "full_name": repo.get("full_name"),
+                        "url": repo.get("url"),
+                        "private": repo.get("private"),
+                        "description": repo.get("description"),
+                        "permission": permission,
+                        "role_name": perms.get("role_name", permission.capitalize()),
+                        "archived": repo.get("archived", False)
+                    })
+            except Exception:
+                # Si hay error obteniendo permisos, continuar con el siguiente
+                pass
+
+        # Ordenar por nombre
+        user_repos.sort(key=lambda x: x.get("name", "").lower())
+
+        self._cache[cache_key] = {'data': user_repos, 'time': datetime.now()}
+        return user_repos
+
+    def get_org_members_with_repos_count(self, org: str) -> List[Dict]:
+        """
+        Obtiene los miembros de una organización con un conteo aproximado de repos accesibles.
+        Esta es una versión optimizada que no verifica cada repo individualmente.
+
+        Args:
+            org: Nombre de la organización
+
+        Returns:
+            Lista de miembros con información adicional
+        """
+        members = self.get_org_members(org)
+        repos = self.get_org_repos(org)
+        total_repos = len(repos)
+        public_repos = len([r for r in repos if not r.get("private")])
+
+        # Para cada miembro, asumimos acceso a repos públicos + estimación de privados
+        # Para conteo exacto, usar get_user_repos_in_org() individualmente
+        for member in members:
+            member["estimated_repos"] = total_repos  # Miembros de org tienen acceso a todos
+            member["public_repos"] = public_repos
+            member["private_repos"] = total_repos - public_repos
+
         return members
 
     def get_org_info(self, org: str) -> Optional[Dict]:

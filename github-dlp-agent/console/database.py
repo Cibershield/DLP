@@ -168,6 +168,30 @@ class DLPDatabase:
             cursor.execute('CREATE INDEX IF NOT EXISTS idx_traffic_repo ON traffic_history(repo_name)')
             cursor.execute('CREATE INDEX IF NOT EXISTS idx_alerts_date ON access_alerts(date)')
 
+            # Tabla de accesos temporales a repositorios
+            cursor.execute('''
+                CREATE TABLE IF NOT EXISTS access_grants (
+                    id INTEGER PRIMARY KEY AUTOINCREMENT,
+                    github_user TEXT NOT NULL,
+                    organization TEXT NOT NULL,
+                    repo_name TEXT NOT NULL,
+                    permission TEXT DEFAULT 'pull',
+                    granted_by TEXT,
+                    granted_at DATETIME DEFAULT CURRENT_TIMESTAMP,
+                    expires_at DATETIME NOT NULL,
+                    status TEXT DEFAULT 'active',
+                    revoked_at DATETIME,
+                    revoke_reason TEXT,
+                    created_at DATETIME DEFAULT CURRENT_TIMESTAMP
+                )
+            ''')
+
+            # Índices para accesos temporales
+            cursor.execute('CREATE INDEX IF NOT EXISTS idx_grants_user ON access_grants(github_user)')
+            cursor.execute('CREATE INDEX IF NOT EXISTS idx_grants_repo ON access_grants(organization, repo_name)')
+            cursor.execute('CREATE INDEX IF NOT EXISTS idx_grants_expires ON access_grants(expires_at)')
+            cursor.execute('CREATE INDEX IF NOT EXISTS idx_grants_status ON access_grants(status)')
+
             logger.info(f"✓ Base de datos inicializada: {self.db_path}")
 
     # ============== Eventos DLP ==============
@@ -750,6 +774,155 @@ class DLPDatabase:
                 'clones_by_month': by_month,
                 'total_alerts': total_alerts
             }
+
+    # ============== Accesos Temporales ==============
+
+    def create_access_grant(self, github_user: str, organization: str, repo_name: str,
+                           permission: str, expires_at: str, granted_by: str = None) -> int:
+        """
+        Crea un nuevo acceso temporal a un repositorio.
+
+        Args:
+            github_user: Usuario de GitHub
+            organization: Nombre de la organización
+            repo_name: Nombre del repositorio
+            permission: Tipo de permiso (pull, push, admin, maintain, triage)
+            expires_at: Fecha de expiración (formato ISO)
+            granted_by: Usuario que otorgó el acceso
+
+        Returns:
+            ID del registro creado
+        """
+        with self.get_connection() as conn:
+            cursor = conn.cursor()
+
+            cursor.execute('''
+                INSERT INTO access_grants
+                (github_user, organization, repo_name, permission, expires_at, granted_by)
+                VALUES (?, ?, ?, ?, ?, ?)
+            ''', (github_user, organization, repo_name, permission, expires_at, granted_by))
+
+            logger.info(f"✓ Acceso temporal creado: {github_user} -> {organization}/{repo_name} (expira: {expires_at})")
+            return cursor.lastrowid
+
+    def get_access_grants(self, filters: Dict = None, limit: int = 100) -> List[Dict]:
+        """
+        Obtiene accesos temporales con filtros opcionales.
+
+        Filtros: organization, repo_name, github_user, status
+        """
+        filters = filters or {}
+
+        query = "SELECT * FROM access_grants WHERE 1=1"
+        params = []
+
+        if filters.get('organization'):
+            query += " AND organization = ?"
+            params.append(filters['organization'])
+
+        if filters.get('repo_name'):
+            query += " AND repo_name = ?"
+            params.append(filters['repo_name'])
+
+        if filters.get('github_user'):
+            query += " AND github_user = ?"
+            params.append(filters['github_user'])
+
+        if filters.get('status'):
+            query += " AND status = ?"
+            params.append(filters['status'])
+        else:
+            # Por defecto solo mostrar activos
+            query += " AND status = 'active'"
+
+        query += " ORDER BY expires_at ASC LIMIT ?"
+        params.append(limit)
+
+        with self.get_connection() as conn:
+            cursor = conn.cursor()
+            cursor.execute(query, params)
+            return [dict(row) for row in cursor.fetchall()]
+
+    def get_active_access_grants(self) -> List[Dict]:
+        """Obtiene todos los accesos temporales activos"""
+        return self.get_access_grants({'status': 'active'})
+
+    def get_expired_access_grants(self) -> List[Dict]:
+        """Obtiene accesos activos que ya expiraron"""
+        with self.get_connection() as conn:
+            cursor = conn.cursor()
+            cursor.execute('''
+                SELECT * FROM access_grants
+                WHERE status = 'active' AND expires_at <= datetime('now')
+                ORDER BY expires_at ASC
+            ''')
+            return [dict(row) for row in cursor.fetchall()]
+
+    def get_access_grant_by_id(self, grant_id: int) -> Optional[Dict]:
+        """Obtiene un acceso temporal por su ID"""
+        with self.get_connection() as conn:
+            cursor = conn.cursor()
+            cursor.execute('SELECT * FROM access_grants WHERE id = ?', (grant_id,))
+            row = cursor.fetchone()
+            return dict(row) if row else None
+
+    def mark_grant_expired(self, grant_id: int, reason: str = "Expirado automáticamente"):
+        """Marca un acceso como expirado"""
+        with self.get_connection() as conn:
+            cursor = conn.cursor()
+            cursor.execute('''
+                UPDATE access_grants
+                SET status = 'expired', revoked_at = datetime('now'), revoke_reason = ?
+                WHERE id = ?
+            ''', (reason, grant_id))
+            logger.info(f"✓ Acceso temporal {grant_id} marcado como expirado")
+
+    def revoke_access_grant(self, grant_id: int, reason: str = "Revocado manualmente"):
+        """Revoca un acceso temporal manualmente"""
+        with self.get_connection() as conn:
+            cursor = conn.cursor()
+            cursor.execute('''
+                UPDATE access_grants
+                SET status = 'revoked', revoked_at = datetime('now'), revoke_reason = ?
+                WHERE id = ?
+            ''', (reason, grant_id))
+            logger.info(f"✓ Acceso temporal {grant_id} revocado: {reason}")
+
+    def extend_access_grant(self, grant_id: int, new_expires_at: str):
+        """Extiende la fecha de expiración de un acceso"""
+        with self.get_connection() as conn:
+            cursor = conn.cursor()
+            cursor.execute('''
+                UPDATE access_grants
+                SET expires_at = ?
+                WHERE id = ? AND status = 'active'
+            ''', (new_expires_at, grant_id))
+            logger.info(f"✓ Acceso temporal {grant_id} extendido hasta {new_expires_at}")
+
+    def get_user_active_grants(self, github_user: str) -> List[Dict]:
+        """Obtiene todos los accesos activos de un usuario"""
+        return self.get_access_grants({'github_user': github_user, 'status': 'active'})
+
+    def get_repo_active_grants(self, organization: str, repo_name: str) -> List[Dict]:
+        """Obtiene todos los accesos activos de un repositorio"""
+        return self.get_access_grants({
+            'organization': organization,
+            'repo_name': repo_name,
+            'status': 'active'
+        })
+
+    def get_grants_expiring_soon(self, hours: int = 24) -> List[Dict]:
+        """Obtiene accesos que expiran pronto (para alertas)"""
+        with self.get_connection() as conn:
+            cursor = conn.cursor()
+            cursor.execute('''
+                SELECT * FROM access_grants
+                WHERE status = 'active'
+                  AND expires_at > datetime('now')
+                  AND expires_at <= datetime('now', '+' || ? || ' hours')
+                ORDER BY expires_at ASC
+            ''', (hours,))
+            return [dict(row) for row in cursor.fetchall()]
 
 
 # Instancia global
