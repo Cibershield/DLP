@@ -68,8 +68,13 @@ monitoring:
 
 security:
   # Admin password hash (SHA-256)
-  # Default: "admin123" - CHANGE IN PRODUCTION
-  admin_password_hash: "240be518fabd2724ddb6f04eeb9d5b2c4f739a3bb7c72f6e60fe19ca8cd35b4a"
+  # IMPORTANT: Generate your own hash with:
+  #   python -c "import hashlib; print(hashlib.sha256(b'YOUR_PASSWORD').hexdigest())"
+  # Leave empty to disable password protection (NOT RECOMMENDED)
+  admin_password_hash: ""
+
+  # Set to true after configuring your password
+  password_configured: false
 
   # Enable self-protection (prevent uninstall without password)
   self_protection: true

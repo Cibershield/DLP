@@ -49,8 +49,20 @@ users_db = {}
 def init_auth(app):
     """Initialize authentication for the Flask app"""
 
-    # Secret key for sessions
-    app.secret_key = os.getenv('SECRET_KEY', secrets.token_hex(32))
+    # Secret key for sessions - REQUIRED in production
+    secret_key = os.getenv('SECRET_KEY')
+    if not secret_key:
+        # Generate a temporary key but warn about it
+        import logging
+        logger = logging.getLogger("Auth")
+        secret_key = secrets.token_hex(32)
+        logger.warning("=" * 60)
+        logger.warning("WARNING: SECRET_KEY not set in environment!")
+        logger.warning("Sessions will be invalidated on restart.")
+        logger.warning("Set SECRET_KEY environment variable in production.")
+        logger.warning("Generate one with: python -c \"import secrets; print(secrets.token_hex(32))\"")
+        logger.warning("=" * 60)
+    app.secret_key = secret_key
 
     # Initialize login manager
     login_manager.init_app(app)
@@ -296,7 +308,9 @@ def microsoft_callback():
         return redirect('/')
 
     except Exception as e:
-        return f"Error de autenticación: {str(e)}", 400
+        import logging
+        logging.getLogger("Auth").error(f"Microsoft auth error: {e}")
+        return "Error de autenticación. Por favor intente de nuevo.", 400
 
 
 @auth_bp.route('/auth/google')
@@ -342,7 +356,9 @@ def google_callback():
         return redirect('/')
 
     except Exception as e:
-        return f"Error de autenticación: {str(e)}", 400
+        import logging
+        logging.getLogger("Auth").error(f"Google auth error: {e}")
+        return "Error de autenticación. Por favor intente de nuevo.", 400
 
 
 @auth_bp.route('/logout')

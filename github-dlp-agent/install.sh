@@ -760,6 +760,10 @@ else:
             log_warning "No se pudo configurar la clave de proteccion"
         fi
         deactivate
+
+        # Limpiar variables sensibles de memoria
+        unset ADMIN_KEY
+        unset ADMIN_KEY_CONFIRM
     else
         log_info "Proteccion con clave omitida"
         log_warning "El agente podra ser desinstalado sin autorizacion"

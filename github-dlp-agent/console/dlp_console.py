@@ -3,6 +3,8 @@
 Consola DLP - Recibe y visualiza eventos de los agentes
 """
 
+import os
+import re
 import json
 import socket
 import threading
@@ -12,22 +14,29 @@ from pathlib import Path
 from typing import List, Dict, Optional
 from dataclasses import dataclass
 from collections import deque
+from functools import wraps
 
-from flask import Flask, render_template_string, jsonify, Response, redirect, url_for
+from flask import Flask, render_template_string, jsonify, Response, redirect, url_for, request, g
 from flask_cors import CORS
-from flask_login import current_user
+from flask_login import current_user, login_required
 
 # Configuración
 CONSOLE_CONFIG = {
     "tcp_port": 5555,
     "web_port": 8080,
     "max_events": 1000,
-    "log_file": "console.log"
+    "log_file": "console.log",
+    "max_pagination_limit": 1000,  # Límite máximo de paginación
+    "rate_limit_per_minute": 60,   # Límites de rate
 }
 
 # Almacén de eventos en memoria
 events_store: deque = deque(maxlen=CONSOLE_CONFIG["max_events"])
 events_lock = threading.Lock()
+
+# Rate limiting storage
+rate_limit_storage: Dict[str, List[float]] = {}
+rate_limit_lock = threading.Lock()
 
 # Estadísticas
 stats = {
@@ -45,7 +54,101 @@ stats = {
 agent_metrics: Dict[str, Dict] = {}  # hostname -> últimas métricas
 
 app = Flask(__name__)
-CORS(app)
+
+# CORS configurado de forma segura
+# En producción, cambiar origins a tu dominio específico
+ALLOWED_ORIGINS = os.getenv('CORS_ORIGINS', 'http://localhost:8080,http://127.0.0.1:8080').split(',')
+CORS(app, origins=ALLOWED_ORIGINS, supports_credentials=True)
+
+
+# ============== Seguridad: Rate Limiting ==============
+def get_client_ip():
+    """Obtiene la IP del cliente de forma segura"""
+    if request.headers.get('X-Forwarded-For'):
+        return request.headers.get('X-Forwarded-For').split(',')[0].strip()
+    return request.remote_addr or '127.0.0.1'
+
+
+def rate_limit(max_requests: int = 60, window_seconds: int = 60):
+    """Decorador para rate limiting"""
+    def decorator(f):
+        @wraps(f)
+        def wrapped(*args, **kwargs):
+            client_ip = get_client_ip()
+            current_time = datetime.now().timestamp()
+
+            with rate_limit_lock:
+                if client_ip not in rate_limit_storage:
+                    rate_limit_storage[client_ip] = []
+
+                # Limpiar requests antiguos
+                rate_limit_storage[client_ip] = [
+                    t for t in rate_limit_storage[client_ip]
+                    if current_time - t < window_seconds
+                ]
+
+                if len(rate_limit_storage[client_ip]) >= max_requests:
+                    return jsonify({
+                        'error': 'Rate limit exceeded. Please try again later.',
+                        'retry_after': window_seconds
+                    }), 429
+
+                rate_limit_storage[client_ip].append(current_time)
+
+            return f(*args, **kwargs)
+        return wrapped
+    return decorator
+
+
+# ============== Seguridad: Validación de Paths ==============
+def validate_path_param(param: str) -> bool:
+    """Valida que un parámetro de path no contenga caracteres peligrosos"""
+    if not param:
+        return False
+    # No permitir path traversal ni caracteres especiales peligrosos
+    dangerous_patterns = ['..', '\\', '\x00', '%00', '%2e%2e']
+    param_lower = param.lower()
+    for pattern in dangerous_patterns:
+        if pattern in param_lower:
+            return False
+    return True
+
+
+def sanitize_for_html(text: str) -> str:
+    """Escapa caracteres HTML para prevenir XSS"""
+    if not text:
+        return ''
+    return (str(text)
+            .replace('&', '&amp;')
+            .replace('<', '&lt;')
+            .replace('>', '&gt;')
+            .replace('"', '&quot;')
+            .replace("'", '&#x27;'))
+
+
+def safe_int(value, default: int = 0, min_val: int = None, max_val: int = None) -> int:
+    """Convierte a int de forma segura con límites"""
+    try:
+        result = int(value)
+        if min_val is not None:
+            result = max(result, min_val)
+        if max_val is not None:
+            result = min(result, max_val)
+        return result
+    except (TypeError, ValueError):
+        return default
+
+
+# ============== Seguridad: Decorador de autenticación opcional ==============
+def auth_required_if_enabled(f):
+    """Requiere autenticación solo si está habilitada"""
+    @wraps(f)
+    def decorated_function(*args, **kwargs):
+        if AUTH_ENABLED and is_auth_enabled():
+            if not current_user.is_authenticated:
+                return jsonify({'error': 'Authentication required'}), 401
+        return f(*args, **kwargs)
+    return decorated_function
 
 # Inicializar autenticación (Microsoft Entra / Google Workspace)
 AUTH_ENABLED = False
@@ -3797,6 +3900,8 @@ def dashboard():
 
 
 @app.route('/api/events')
+@auth_required_if_enabled
+@rate_limit(max_requests=120, window_seconds=60)
 def api_events():
     """API endpoint para obtener eventos"""
     with events_lock:
@@ -3817,6 +3922,8 @@ def api_events():
 
 
 @app.route('/api/stats')
+@auth_required_if_enabled
+@rate_limit(max_requests=60, window_seconds=60)
 def api_stats():
     """API endpoint para estadísticas"""
     with events_lock:
@@ -3842,6 +3949,8 @@ def api_status():
 
 
 @app.route('/api/repositories')
+@auth_required_if_enabled
+@rate_limit(max_requests=30, window_seconds=60)
 def api_repositories():
     """API endpoint para repositorios rastreados"""
     if not REPO_TRACKING_ENABLED or not repo_tracker:
@@ -3890,8 +3999,14 @@ def api_repositories():
 
 
 @app.route('/api/repositories/<path:repo_name>')
+@auth_required_if_enabled
+@rate_limit(max_requests=60, window_seconds=60)
 def api_repository_detail(repo_name):
     """API endpoint para detalle de un repositorio"""
+    # Validar path para prevenir traversal
+    if not validate_path_param(repo_name):
+        return jsonify({"error": "Invalid repository name"}), 400
+
     if not REPO_TRACKING_ENABLED or not repo_tracker:
         return jsonify({"error": "Repository tracking not enabled"})
 
@@ -3903,6 +4018,8 @@ def api_repository_detail(repo_name):
 
 
 @app.route('/api/agents')
+@auth_required_if_enabled
+@rate_limit(max_requests=30, window_seconds=60)
 def api_agents():
     """API endpoint para agentes conocidos"""
     if not REPO_TRACKING_ENABLED or not repo_tracker:
@@ -3912,6 +4029,8 @@ def api_agents():
 
 
 @app.route('/api/unauthorized')
+@auth_required_if_enabled
+@rate_limit(max_requests=30, window_seconds=60)
 def api_unauthorized():
     """API endpoint para clones no autorizados (incluye datos de webhook)"""
     unauthorized = []
@@ -3935,8 +4054,14 @@ def api_unauthorized():
 
 
 @app.route('/api/github/repo/<owner>/<repo>')
+@auth_required_if_enabled
+@rate_limit(max_requests=30, window_seconds=60)
 def api_github_repo(owner, repo):
     """API endpoint para info de GitHub"""
+    # Validar parámetros
+    if not validate_path_param(owner) or not validate_path_param(repo):
+        return jsonify({"error": "Invalid owner or repo name"}), 400
+
     if not REPO_TRACKING_ENABLED or not github_api or not github_api.is_configured():
         return jsonify({"error": "GitHub API not configured. Set GITHUB_TOKEN environment variable."})
 
@@ -3952,14 +4077,20 @@ def api_github_repo(owner, repo):
 
 
 @app.route('/api/github/org/<org>')
+@auth_required_if_enabled
+@rate_limit(max_requests=20, window_seconds=60)
 def api_github_org(org):
     """API endpoint para información de organización GitHub"""
+    # Validar parámetro
+    if not validate_path_param(org):
+        return jsonify({"error": "Invalid organization name"}), 400
+
     if not github_api or not github_api.is_configured():
         return jsonify({"error": "GitHub API not configured. Set GITHUB_TOKEN environment variable."})
 
     org_info = github_api.get_org_info(org)
     if not org_info:
-        return jsonify({"error": f"Organization '{org}' not found or no access"})
+        return jsonify({"error": "Organization not found or no access"})
 
     repos = github_api.get_org_repos(org)
     members = github_api.get_org_members(org)
@@ -3976,8 +4107,13 @@ def api_github_org(org):
 
 
 @app.route('/api/github/org/<org>/repo/<repo>/collaborators')
+@auth_required_if_enabled
+@rate_limit(max_requests=30, window_seconds=60)
 def api_github_repo_collaborators(org, repo):
     """API endpoint para colaboradores de un repo específico"""
+    if not validate_path_param(org) or not validate_path_param(repo):
+        return jsonify({"error": "Invalid parameters"}), 400
+
     if not github_api or not github_api.is_configured():
         return jsonify({"error": "GitHub API not configured"})
 
@@ -3986,12 +4122,16 @@ def api_github_repo_collaborators(org, repo):
 
 
 @app.route('/api/github/org/<org>/repo/<repo>/collaborators/<username>', methods=['PUT'])
+@auth_required_if_enabled
+@rate_limit(max_requests=10, window_seconds=60)
 def api_add_collaborator(org, repo, username):
     """API endpoint para agregar colaborador"""
+    if not validate_path_param(org) or not validate_path_param(repo) or not validate_path_param(username):
+        return jsonify({"error": "Invalid parameters"}), 400
+
     if not github_api or not github_api.is_configured():
         return jsonify({"error": "GitHub API not configured"})
 
-    from flask import request
     data = request.get_json() or {}
     permission = data.get('permission', 'push')
 
@@ -4000,8 +4140,13 @@ def api_add_collaborator(org, repo, username):
 
 
 @app.route('/api/github/org/<org>/repo/<repo>/collaborators/<username>', methods=['DELETE'])
+@auth_required_if_enabled
+@rate_limit(max_requests=10, window_seconds=60)
 def api_remove_collaborator(org, repo, username):
     """API endpoint para eliminar colaborador"""
+    if not validate_path_param(org) or not validate_path_param(repo) or not validate_path_param(username):
+        return jsonify({"error": "Invalid parameters"}), 400
+
     if not github_api or not github_api.is_configured():
         return jsonify({"error": "GitHub API not configured"})
 
@@ -4010,12 +4155,16 @@ def api_remove_collaborator(org, repo, username):
 
 
 @app.route('/api/github/org/<org>/repo/<repo>/collaborators/<username>/permission', methods=['PUT'])
+@auth_required_if_enabled
+@rate_limit(max_requests=10, window_seconds=60)
 def api_update_collaborator_permission(org, repo, username):
     """API endpoint para actualizar permiso de colaborador"""
+    if not validate_path_param(org) or not validate_path_param(repo) or not validate_path_param(username):
+        return jsonify({"error": "Invalid parameters"}), 400
+
     if not github_api or not github_api.is_configured():
         return jsonify({"error": "GitHub API not configured"})
 
-    from flask import request
     data = request.get_json() or {}
     permission = data.get('permission')
 
@@ -4114,8 +4263,13 @@ def api_access_correlation(org):
 # ============== Organization Members Endpoints ==============
 
 @app.route('/api/github/org/<org>/members')
+@auth_required_if_enabled
+@rate_limit(max_requests=20, window_seconds=60)
 def api_org_members(org):
     """API endpoint para obtener miembros de una organización"""
+    if not validate_path_param(org):
+        return jsonify({"error": "Invalid organization name"}), 400
+
     if not github_api or not github_api.is_configured():
         return jsonify({"error": "GitHub API not configured. Set GITHUB_TOKEN environment variable."})
 
@@ -4130,13 +4284,18 @@ def api_org_members(org):
             "total_repos": len(repos)
         })
     except Exception as e:
-        logger.error(f"Error obteniendo miembros de {org}: {e}")
-        return jsonify({"error": str(e)}), 500
+        logger.error(f"Error obteniendo miembros de org: {e}")
+        return jsonify({"error": "Error fetching organization members"}), 500
 
 
 @app.route('/api/github/org/<org>/members/<username>/repos')
+@auth_required_if_enabled
+@rate_limit(max_requests=30, window_seconds=60)
 def api_member_repos(org, username):
     """API endpoint para obtener repositorios a los que tiene acceso un miembro"""
+    if not validate_path_param(org) or not validate_path_param(username):
+        return jsonify({"error": "Invalid parameters"}), 400
+
     if not github_api or not github_api.is_configured():
         return jsonify({"error": "GitHub API not configured. Set GITHUB_TOKEN environment variable."})
 
@@ -4150,19 +4309,19 @@ def api_member_repos(org, username):
             "count": len(repos)
         })
     except Exception as e:
-        logger.error(f"Error obteniendo repos de {username} en {org}: {e}")
-        return jsonify({"error": str(e)}), 500
+        logger.error(f"Error obteniendo repos de usuario: {e}")
+        return jsonify({"error": "Error fetching user repositories"}), 500
 
 
 # ============== Temporary Access Grants Endpoints ==============
 
 @app.route('/api/access/grants', methods=['GET'])
+@auth_required_if_enabled
+@rate_limit(max_requests=30, window_seconds=60)
 def api_list_access_grants():
     """API endpoint para listar accesos temporales"""
     if not DATABASE_ENABLED or not dlp_db:
         return jsonify({"error": "Database not enabled"}), 503
-
-    from flask import request
 
     filters = {}
     if request.args.get('organization'):
@@ -4186,6 +4345,8 @@ def api_list_access_grants():
 
 
 @app.route('/api/access/grants', methods=['POST'])
+@auth_required_if_enabled
+@rate_limit(max_requests=10, window_seconds=60)
 def api_create_access_grant():
     """API endpoint para crear un nuevo acceso temporal"""
     if not DATABASE_ENABLED or not dlp_db:

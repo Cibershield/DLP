@@ -16,6 +16,31 @@ from contextlib import contextmanager
 
 logger = logging.getLogger("DLPDatabase")
 
+# Límites de seguridad
+MAX_QUERY_LIMIT = 1000
+DEFAULT_QUERY_LIMIT = 100
+
+
+def escape_sql_like(value: str) -> str:
+    """
+    Escapa caracteres especiales para consultas LIKE en SQLite.
+    Previene ataques de wildcard DoS.
+    """
+    if not value:
+        return value
+    # Escapar los caracteres especiales de LIKE
+    return (value
+            .replace('\\', '\\\\')
+            .replace('%', '\\%')
+            .replace('_', '\\_'))
+
+
+def safe_limit(limit: int) -> int:
+    """Aplica límites seguros a las consultas"""
+    if limit <= 0:
+        return DEFAULT_QUERY_LIMIT
+    return min(limit, MAX_QUERY_LIMIT)
+
 
 class DLPDatabase:
     """Base de datos SQLite para almacenar eventos DLP"""
@@ -255,6 +280,10 @@ class DLPDatabase:
         """Obtiene eventos DLP con filtros opcionales"""
         filters = filters or {}
 
+        # Aplicar límites seguros
+        limit = safe_limit(limit)
+        offset = max(0, offset)
+
         query = "SELECT * FROM dlp_events WHERE 1=1"
         params = []
 
@@ -274,18 +303,18 @@ class DLPDatabase:
             query += " AND CAST(strftime('%H', timestamp) AS INTEGER) <= ?"
             params.append(filters['hour_to'])
 
-        # Filtros de usuario/host
+        # Filtros de usuario/host (con escape de wildcards)
         if filters.get('username'):
-            query += " AND username LIKE ?"
-            params.append(f"%{filters['username']}%")
+            query += " AND username LIKE ? ESCAPE '\\'"
+            params.append(f"%{escape_sql_like(filters['username'])}%")
         if filters.get('hostname'):
-            query += " AND hostname LIKE ?"
-            params.append(f"%{filters['hostname']}%")
+            query += " AND hostname LIKE ? ESCAPE '\\'"
+            params.append(f"%{escape_sql_like(filters['hostname'])}%")
 
-        # Filtros de repositorio
+        # Filtros de repositorio (con escape de wildcards)
         if filters.get('repo_name'):
-            query += " AND repo_name LIKE ?"
-            params.append(f"%{filters['repo_name']}%")
+            query += " AND repo_name LIKE ? ESCAPE '\\'"
+            params.append(f"%{escape_sql_like(filters['repo_name'])}%")
 
         # Filtros de operación
         if filters.get('event_type'):
